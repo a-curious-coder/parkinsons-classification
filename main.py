@@ -28,7 +28,7 @@ def normalize_tabular_data(data):
     Returns:
         pd.DataFrame: Normalized Parkinsons data
     """
-    avoid = ['status']
+    avoid = ['status', 'name']
     # apply normalization techniques
     for column in data.columns:
         if column not in avoid:
@@ -147,22 +147,23 @@ def keras_network(x_train, x_test, y_train, y_test):
 
     # Do we overwrite model file if there is 1
     rewrite_model = bool(int(os.getenv("REWRITE_MODEL")))
+
+    # Load Best Deep Learning Settings
+    bsdf = pd.read_csv("settings/best_dl.csv")
+
+    # Best settings
+    batch_size = bsdf.iloc[0]['batch_size']
+    epochs = bsdf.iloc[0]['epochs']
+    layer1 = bsdf.iloc[0]['layer1']
+    layer2 = bsdf.iloc[0]['layer2']
+    init = bsdf.iloc[0]['init']
+    optimizer = bsdf.iloc[0]['optimizer']
+    loss = bsdf.iloc[0]['loss']
+    metric = bsdf.iloc[0]['metric']
+    output = bsdf.iloc[0]['output']
+    
     # If there's no model files
-    if not exists(f"models/parkinsons_model_{epochs}.tf") or not exists(f"models/parkinsons_model_{epochs}.tf") or rewrite_model:
-        # Load Best Deep Learning Settings
-        bsdf = pd.read_csv("settings/best_dl.csv")
-
-        # Best settings
-        batch_size = bsdf.iloc[0]['batch_size']
-        epochs = bsdf.iloc[0]['epochs']
-        layer1 = bsdf.iloc[0]['layer1']
-        layer2 = bsdf.iloc[0]['layer2']
-        init = bsdf.iloc[0]['init']
-        optimizer = bsdf.iloc[0]['optimizer']
-        loss = bsdf.iloc[0]['loss']
-        metric = bsdf.iloc[0]['metric']
-        output = bsdf.iloc[0]['output']
-
+    if not exists(f"models/parkinsons_model_{epochs}.tf") or rewrite_model:
         print("Training/Testing Model")
         print("Accuracy\tNodes\tOptimizer\tLoss")
         # Validation set size
@@ -197,6 +198,7 @@ def keras_network(x_train, x_test, y_train, y_test):
     else:
         print("Loading Model(s)")
         print("Accuracy\tNodes\tOptimizer\tLoss")
+        # TODO: Somehow state whether model takes data with reduced dimensions (PCA, LDA)
         model = models.load_model(f"models/parkinsons_model_{epochs}.tf")
         predictions = model.evaluate(x_test, y_test, verbose = 0)
         print(f"[*]\t{predictions[1]*100:.2f}%\t({layer1}, {layer2})\t{optimizer}\t{loss}")
@@ -214,24 +216,32 @@ def prepare_directory():
 def main():
     # Load in environment variables from .env
     load_dotenv()
+
     # Prepare directories for program
     prepare_directory()
 
     # Load Dataset
     print("-------------------\nLoad Data\n-------------------")
     df = pd.read_csv("data/parkinsons.data")
-    # df = df.drop('name', axis = 1)
+
     # EDA
     print("-------------------\nEDA\n-------------------")
-    X, y = data_label_split(df)
     # Number of names
-    print(f"Number of names: {len(X['name'].unique())}")
+    print(f"Number of names: {len(df['name'].unique())}")
     # Number of observations
-    print(f"Number of rows: {X.shape[0]}")
+    print(f"Number of rows: {df.shape[0]}")
+    # TODO: Add donut chart of this distribution
+    print(f"Target class distribution\n{df['status'].value_counts()}")
+    v.plot_class_ratio(df['status'])   
+    #  ------------------- PREPROCESSING -------------------  
+    # Bring all data values to the same range
+    data = normalize_tabular_data(df)
+    # Split data into data and labels
+    X, y = data_label_split(data)
+    # Drop columns that hold no value regarding prediction
     X = X.drop('name', axis = 1)
-
     # Dimensionality Reduction
-    pca = True
+    pca = False
     tsvd = False
     if pca or tsvd:
         print("-------------------\nDimensionality Reduction\n-------------------")
@@ -242,17 +252,16 @@ def main():
             svd = TruncatedSVD(n_components=5)
             X = svd.fit(X).transform(X)
 
-    
     # Split data into test and training sets
     x_train, x_test, y_train, y_test = train_test_split(X,
                                                         y,
                                                         test_size=0.4,
                                                         random_state=4)
-                                                        
     
-    linear_regression(x_train, x_test, y_train, y_test)
-    random_forest(x_train, x_test, y_train, y_test)
-    keras_network(x_train, x_test, y_train, y_test)
+                                                     
+    # linear_regression(x_train, x_test, y_train, y_test)
+    # random_forest(x_train, x_test, y_train, y_test)
+    # keras_network(x_train, x_test, y_train, y_test)
 
 
 if __name__ == "__main__":
