@@ -133,3 +133,4 @@ plots/
 models/
 *.html
 *.DS_Store
+.vscode/
