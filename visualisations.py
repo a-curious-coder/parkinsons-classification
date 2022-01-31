@@ -100,7 +100,7 @@ def plot_all_graphs(loss, val_loss, acc, val_acc):
     )
 
 
-def plot_class_ratio(counts):
+def plot_class_ratio(counts, filename, title):
     df = counts.to_frame()
     # Format labels
     labels = df["status"].value_counts().index.tolist()
@@ -110,15 +110,72 @@ def plot_class_ratio(counts):
     # Gets value counts
     values = [df["status"].value_counts()[i] for i in range(df.shape[1] + 1)]
 
-    fig = go.Figure(data=[go.Pie(title = "Class Distribution", labels=labels, values=values, hole=0.3)])
-
     colors = ["red", "mediumturquoise"]
-
-    fig.update_traces(
-        hoverinfo="label+percent",
-        textinfo="value",
-        textfont_size=20,
-        marker=dict(colors=colors, line=dict(color="#000000", width=2))
+    fig = go.Figure(
+        data=go.Pie(
+            title="Class Distribution", 
+            labels=labels, 
+            values=values, 
+            hole=0.3,
+            hoverinfo="label+percent",
+            textinfo="value",
+            textfont_size=20,
+            marker=dict(colors=colors, line=dict(color="#000000", width=2)),),
+        layout = go.Layout(
+            title = title
+        )
     )
-    fig.write_html("plots/class_ratio.html")
-    fig.show()
+    fig.write_html(f"plots/{filename}.html")
+    # fig.show()
+
+
+def plot_logistic_regression(points):
+    fig = go.Figure(
+        data=go.Scatter(y=points, mode="markers"),
+        layout = go.Layout(
+            title = "Logistic Regression",
+            xaxis = dict(title = "Datapoints"),
+            yaxis = dict(title = "Value", range = [0, 1])
+        )
+    )
+
+    fig.write_html("plots/logistic_regression.html")
+    # fig.show()
+
+
+def plot_feature_importance(feature_names, indices, importances, std):
+    hovertexts = []
+    # Scale up elements to get better representation of percentage value
+    importances = importances * 100
+    std = std * 100
+
+    for i in range(len(importances)):
+        hovertexts.append(
+            "<br>".join(
+                [
+                    f"Feature {indices[i]} : ({feature_names[indices[i]]})",
+                    f"Importance {importances[indices[i]]:.2f}%"
+                ]
+            )
+        )
+
+    fig = go.Figure(
+        data=go.Bar(
+            y=importances[indices],
+            error_y=dict(type="data", array=std[indices]),
+            hoverinfo = 'text',
+            hovertext=hovertexts,
+        ),
+        layout=go.Layout(
+            title=dict(text="Feature Importance", x=0.5),
+            xaxis=dict(
+                title="Feature",
+                tickmode="array",
+                tickvals=list(range(len(importances))),
+                ticktext=indices,
+            ),
+            yaxis=dict(title="Importance"),
+        ),
+    )
+    fig.write_html("plots/feature_importance.html")
+    # fig.show()
