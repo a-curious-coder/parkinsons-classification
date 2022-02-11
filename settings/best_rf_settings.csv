@@ -1,2 +1,2 @@
 criterion,max_depth,max_features,n_estimators
-gini,8,auto,80
+entropy,5,auto,180

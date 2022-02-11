@@ -19,3 +19,12 @@ Run the python file
 ```bash
 python main.py
 ```
+
+# Data Wrangling
+- Normalisation
+
+# Fine Tuning Classification Models
+- Grid search cross validation
+## Neural Network
+- Regularisation
+- Dropout

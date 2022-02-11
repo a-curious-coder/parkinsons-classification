@@ -1,0 +1,2 @@
+contamination,max_features,max_samples,n_estimators,n_jobs
+auto,5,2,1,-1

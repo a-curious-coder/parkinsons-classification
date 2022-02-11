@@ -1,2 +1,2 @@
 batch_size,dropout_rate,epochs,init,input_shape,layer1,layer2,loss,metric,optimizer,output
-16,0.0,120,normal,5,16,8,binary_crossentropy,accuracy,adam,sigmoid
+512,0.0,500,normal,7,16,8,binary_crossentropy,accuracy,rmsprop,sigmoid

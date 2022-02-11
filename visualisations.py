@@ -1,4 +1,5 @@
 import plotly.graph_objs as go
+import numpy as np
 from plotly.subplots import make_subplots
 
 
@@ -7,7 +8,7 @@ def verify_import():
     pass
 
 
-def plot_loss(loss, val_loss):
+def plot_loss(loss, val_loss, file_name):
     epochs_range = list(range(1, len(loss) + 1))
     loss = [i * 100 for i in loss]
     val_loss = [i * 100 for i in val_loss]
@@ -35,7 +36,7 @@ def plot_loss(loss, val_loss):
         title=dict(text="Training/Validation Loss", x=0.5)
     )
     fig = go.Figure(data=data, layout=layout)
-    fig.write_html("plots/mri_loss.html")
+    fig.write_html(f"plots/{file_name}.html")
     return fig
 
 
@@ -78,6 +79,17 @@ def plot_accuracy(acc, val_acc, file_name):
     return fig
 
 
+def smooth_curve(points, factor=0.8):
+    smoothed_points = []
+    for point in points:
+        if smoothed_points:
+            previous = smoothed_points[-1]
+            smoothed_points.append(previous * factor + point * (1 - factor))
+        else:
+            smoothed_points.append(point)
+    return smoothed_points
+
+
 def plot_all_graphs(loss, val_loss, acc, val_acc):
     """Plots the neural network model's accuracy and loss on same figure
     Args:
@@ -113,17 +125,16 @@ def plot_class_ratio(counts, filename, title):
     colors = ["red", "mediumturquoise"]
     fig = go.Figure(
         data=go.Pie(
-            title="Class Distribution", 
-            labels=labels, 
-            values=values, 
+            title="Class Distribution",
+            labels=labels,
+            values=values,
             hole=0.3,
             hoverinfo="label+percent",
             textinfo="value",
             textfont_size=20,
-            marker=dict(colors=colors, line=dict(color="#000000", width=2)),),
-        layout = go.Layout(
-            title = title
-        )
+            marker=dict(colors=colors, line=dict(color="#000000", width=2)),
+        ),
+        layout=go.Layout(title=title),
     )
     fig.write_html(f"plots/{filename}.html")
     # fig.show()
@@ -132,11 +143,11 @@ def plot_class_ratio(counts, filename, title):
 def plot_logistic_regression(points):
     fig = go.Figure(
         data=go.Scatter(y=points, mode="markers"),
-        layout = go.Layout(
-            title = "Logistic Regression",
-            xaxis = dict(title = "Datapoints"),
-            yaxis = dict(title = "Value", range = [0, 1])
-        )
+        layout=go.Layout(
+            title="Logistic Regression",
+            xaxis=dict(title="Datapoints"),
+            yaxis=dict(title="Value", range=[0, 1]),
+        ),
     )
 
     fig.write_html("plots/logistic_regression.html")
@@ -154,7 +165,7 @@ def plot_feature_importance(feature_names, indices, importances, std):
             "<br>".join(
                 [
                     f"Feature {indices[i]} : ({feature_names[indices[i]]})",
-                    f"Importance {importances[indices[i]]:.2f}%"
+                    f"Importance {importances[indices[i]]:.2f}%",
                 ]
             )
         )
@@ -163,7 +174,7 @@ def plot_feature_importance(feature_names, indices, importances, std):
         data=go.Bar(
             y=importances[indices],
             error_y=dict(type="data", array=std[indices]),
-            hoverinfo = 'text',
+            hoverinfo="text",
             hovertext=hovertexts,
         ),
         layout=go.Layout(
@@ -178,4 +189,52 @@ def plot_feature_importance(feature_names, indices, importances, std):
         ),
     )
     fig.write_html("plots/feature_importance.html")
+    # fig.show()
+
+
+def plot_removed_features(a_predictions, removed_column = "Unknown"):
+    alldata_acc = a_predictions['alldata']
+    # Extract accuracy for all data
+    print(alldata_acc)
+    # Deletes alldata entry
+    del a_predictions["alldata"]
+    features = list(a_predictions.keys())
+    predictions = list(a_predictions.values())
+    explode = np.zeros(len(predictions))
+    # Explodes out slice with highest accuracy value
+    explode[predictions.index(max(predictions))] = 0.2
+    fig = go.Figure(
+        data=[
+            go.Pie(
+                labels=list(a_predictions.keys()),
+                values=predictions,
+                hole=0.3,
+                pull=explode,
+                hovertemplate="<br>".join(
+                    [
+                        "Classifer run with '%{label}' column <b>Removed</b>",
+                        "<b>Predicted: %{value}% Accuracy over average of 20 trials</b>",
+                        "<extra></extra>",
+                    ]
+                ),
+                textinfo = 'value'
+            )
+        ],
+        layout = go.Layout(
+            title = dict(text = f"Highest accuracy when {features[predictions.index(max(predictions))]} is removed of {predictions.index(max(predictions))} %", x = 0.5)
+        )
+    )
+
+    fig.add_annotation(
+        
+        font=dict(color="black"),
+        text=f"Classification Accuracy for All Data: {alldata_acc}%",
+        xref="paper",
+        yref="paper",
+        x=0.1,
+        y=0.1,
+        showarrow=False,
+    )
+
+    fig.write_html(f"plots/removed_columns/{removed_column}_removed.html")
     # fig.show()
