@@ -29,6 +29,7 @@ from sklearn.model_selection import (
 )
 from sklearn.metrics import (
     mean_squared_error,
+    plot_confusion_matrix,
     precision_score,
     recall_score,
     f1_score,
@@ -46,7 +47,7 @@ warnings.filterwarnings("ignore")
 
 def prepare_directory():
     """Creates necessary folders in preparation for data/models saved"""
-    folders = ["misc", "plots", "models", "settings", "plots/removed_columns"]
+    folders = ["misc", "plots", "models", "settings", "plots/removed_columns", "plots/confusion_matrices"]
     for folder in folders:
         if not os.path.isdir(folder):
             os.mkdir(folder)
@@ -134,21 +135,21 @@ def balance_training_data(x_train, y_train):
 # ------------- DATA WRANGLING -------------
 def data_wrangling(df):
     normalise = bool(int(os.getenv("NORMALISE")))
-    dprint("-------------------\nPreprocessing\n-------------------")
-    dprint("[*]\tNormalize Data")
+    print("-------------------\nPreprocessing\n-------------------")
     if normalise:
+        print("[*]\tNormalize Data")
         # Bring all data values to the same range
         df = normalize_tabular_data(df)
     # Split data into data and labels
     X, y = data_label_split(df)
-    dprint("[*]\tDrop 'name' column")
+    print("[*]\tDrop 'name' column")
     # Drop columns that hold no value regarding prediction
     del X["name"]
-    dprint("[*]\tFeature Selection")
-    compare_features = False
-    if compare_features:
-        if not exists("plots/compare_features"):
-            os.mkdir("plots/compare_features")
+    # print("[*]\tFeature Selection")
+    # compare_features = False
+    # if compare_features:
+    #     if not exists("plots/compare_features"):
+    #         os.mkdir("plots/compare_features")
         # for column in X.columns:
         #     for column2 in X.columns:
         #         if column == column2:
@@ -335,7 +336,8 @@ def find_best_nn_settings(x_train, y_train, file_name):
 
         model = KerasClassifier(build_fn=create_model, verbose=1)
         CV_dl = GridSearchCV(estimator=model, param_grid=param_grid, n_jobs=-1, cv=5)
-        results = CV_dl.fit(x_train, y_train)
+        x_train, x_val, y_train, y_val = train_test_split(x_train, y_train, test_size = 0.2, random_state = 42, stratify = y_train)
+        results = CV_dl.fit(x_train, y_train, validation_data = (x_val, y_val))
         print(results.best_score_, results.best_params_)
         end = time.perf_counter()
         print(f"{end-start:.2f} seconds")
@@ -587,7 +589,7 @@ def logistic_regression(x_train, x_test, y_train, y_test):
     plot_logistic_regression(classifier1.predict_proba(x_test)[:, 1])
 
 
-def random_forest(x_train, x_test, y_train, y_test):
+def random_forest(x_train, x_test, y_train, y_test, plot_title = "Confusion Matrix"):
     """Random Forest Classification
 
     Args:
@@ -620,16 +622,19 @@ def random_forest(x_train, x_test, y_train, y_test):
     rf.fit(x_train, y_train)
     # Predict and
     pred = rf.predict(x_test)
-    labels = y_test.values
+    actual = y_test.values
+    features = x_test.columns
     count = 0
     for i in range(len(pred)):
-        if pred[i] == labels[i]:
+        if pred[i] == actual[i]:
             count = count + 1
-    print(f"[*]\t{count / float(len(pred))*100:.2f}%\tRandom Forest")
+    acc = f"{count / float(len(pred))*100:.2f}"
+    print(f"[*]\t{acc}%\tRandom Forest")
+    plot_cm(actual, pred, plot_title + f"({acc}%)")
     return count / float(len(pred)) * 100
 
 
-def svm(x_train, x_test, y_train, y_test):
+def svm(x_train, x_test, y_train, y_test, plot_title = "Confusion Matrix"):
     """Support Vector Machine Neural Network
 
     Args:
@@ -654,12 +659,14 @@ def svm(x_train, x_test, y_train, y_test):
     svclassifier = SVC(kernel=kernel, gamma = gamma, C = C)
     svclassifier.fit(x_train, y_train)
     pred = svclassifier.predict(x_test)
-    labels = y_test.values
+    actual = y_test.values
     count = 0
     for i in range(len(pred)):
-        if pred[i] == labels[i]:
+        if pred[i] == actual[i]:
             count = count + 1
-    print(f"[*]\t{count / float(len(pred))*100:.2f}%\tSVM")
+    acc = f"{count / float(len(pred))*100:.2f}"
+    print(f"[*]\t{acc}%\tSVM")
+    plot_cm(actual, pred, plot_title + f"({acc}%)")
     return count / float(len(pred)) * 100
 
 
@@ -724,21 +731,16 @@ def train_neural_network(x_train, x_test, y_train, y_test, file_name):
         not exists(f"models/parkinsons_model_{epochs}_{input_shape}.tf")
         or rewrite_model
     ):
-        # Validation set size
-        val_size = math.floor((x_train.shape[0] / 10) * 9)
         # Prepare network
         model = create_model(
             layer1, layer2, output, x_train.shape[1], optimizer, loss, metric, init
         )
 
-        x_val = x_train[val_size:]
-        partial_x_train = x_train[:val_size]
-        y_val = y_train[val_size:]
-        partial_y_train = y_train[:val_size]
+        x_train, x_val, y_train, y_val = train_test_split(x_train, y_train, test_size = 0.2, random_state = 42, stratify = y_train)
 
         history = model.fit(
-            partial_x_train,
-            partial_y_train,
+            x_train,
+            y_train,
             epochs=epochs,
             batch_size=batch_size,
             validation_data=(x_val, y_val),
@@ -766,7 +768,7 @@ def train_neural_network(x_train, x_test, y_train, y_test, file_name):
         print("[*]\tModel already trained")
 
 
-def test_neural_network(x_test, y_test, file_name):
+def test_neural_network(x_test, y_test, file_name, plot_title = "Confusion Matrix"):
     """Tests a trained neural network"""
     # Load best Deep Learning settings file
     bsdf = pd.read_csv(f"settings/best_dl_{file_name}.csv")
@@ -790,8 +792,24 @@ def test_neural_network(x_test, y_test, file_name):
     print(f"Testing Neural Network Model ({epochs})")
     # TODO: Somehow state whether model takes data with reduced dimensions (PCA, LDA)
     model = models.load_model(f"models/parkinsons_model_{epochs}_{input_shape}.tf")
-    predictions = model.evaluate(x_test, y_test, verbose=0)
-    print(f"[*]\t{predictions[1]*100:.2f}%\t({layer1}, {layer2})\t{optimizer}\t{loss}")
+    # predictions = model.evaluate(x_test, y_test, verbose=0)
+    x_test = (x_test-x_test.mean())/x_test.std()
+    predictions = model.predict(x = x_test)
+    new = []
+    for i in range(len(predictions)):
+        new.append(predictions[i][0])
+
+    pred = [round(pred) for pred in new]
+
+    actual = y_test.values
+    count = 0
+    for i in range(len(pred)):
+        if pred[i] == actual[i]:
+            count = count + 1
+    acc = f"{count / float(len(pred))*100:.2f}"
+    print(f"[*]\t{acc}%\t({layer1}, {layer2})\t{optimizer}\t{loss}")
+    plot_title = plot_title + f"({acc}%)"
+    plot_cm(y_test, pred, plot_title)
 
 
 # ------------- MISC METHODS -------------
@@ -829,19 +847,21 @@ def main():
     if not exists("misc/removed_columns.csv"):
         predict_minus_feature(df)
     for i in range(2):
+        mode = "All Data"
         x_train, x_test, y_train, y_test = split_data_train_test(df)
+        
         if i == 0:
-            print("all data")
+            print("[*]\tAll Data")
         else:
-            print("removed")
+            mode = "Removed Columns"
             with open("misc/removed_columns.csv", newline="") as f:
                 reader = csv.reader(f)
                 data = list(reader)
             for column in data[0]:
+                print(f"[*]\tRemoving {column}")
                 del x_train[column]
                 del x_test[column]
-            print(x_train.head())
-            
+        # print(x_train.head())
         # Find outliers
         # isolation_forest(x_train, x_test, y_train, y_test)
         # Feature importance
@@ -849,11 +869,10 @@ def main():
         #
         # logistic_regression(x_train, x_test, y_train, y_test)
         # linear_regression(x_train, x_test, y_train, y_test)
-        svm(x_train, x_test, y_train, y_test)
-        random_forest(x_train, x_test, y_train, y_test)
+        svm(x_train, x_test, y_train, y_test, f"({mode}) SVM Confusion Matrix")
+        random_forest(x_train, x_test, y_train, y_test, f"({mode}) Random Forest Confusion Matrix")
         train_neural_network(x_train, x_test, y_train, y_test, "parkinsons")
-        test_neural_network(x_test, y_test, "parkinsons")
-
+        test_neural_network(x_test, y_test, "parkinsons", plot_title = f"({mode}) Neural Network Confusion Matrix")
 
 if __name__ == "__main__":
     main()

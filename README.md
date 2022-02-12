@@ -21,10 +21,15 @@ python main.py
 ```
 
 # Data Wrangling
-- Normalisation
+- Normalisation / Scaling
+- Dimensionality Reduction
+- Outlier detection
 
 # Fine Tuning Classification Models
 - Grid search cross validation
+- Brute force dimensionality reduction
+- Ensure splits are consistent/same
+
 ## Neural Network
 - Regularisation
 - Dropout

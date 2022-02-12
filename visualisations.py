@@ -1,6 +1,7 @@
 import plotly.graph_objs as go
 import numpy as np
 from plotly.subplots import make_subplots
+from sklearn import metrics
 
 
 def verify_import():
@@ -192,8 +193,8 @@ def plot_feature_importance(feature_names, indices, importances, std):
     # fig.show()
 
 
-def plot_removed_features(a_predictions, removed_column = "Unknown"):
-    alldata_acc = a_predictions['alldata']
+def plot_removed_features(a_predictions, removed_column="Unknown"):
+    alldata_acc = a_predictions["alldata"]
     # Extract accuracy for all data
     print(alldata_acc)
     # Deletes alldata entry
@@ -217,16 +218,18 @@ def plot_removed_features(a_predictions, removed_column = "Unknown"):
                         "<extra></extra>",
                     ]
                 ),
-                textinfo = 'value'
+                textinfo="value",
             )
         ],
-        layout = go.Layout(
-            title = dict(text = f"Highest accuracy when {features[predictions.index(max(predictions))]} is removed of {predictions.index(max(predictions))} %", x = 0.5)
-        )
+        layout=go.Layout(
+            title=dict(
+                text=f"Highest accuracy when {features[predictions.index(max(predictions))]} is removed of {predictions.index(max(predictions))} %",
+                x=0.5,
+            )
+        ),
     )
 
     fig.add_annotation(
-        
         font=dict(color="black"),
         text=f"Classification Accuracy for All Data: {alldata_acc}%",
         xref="paper",
@@ -238,3 +241,46 @@ def plot_removed_features(a_predictions, removed_column = "Unknown"):
 
     fig.write_html(f"plots/removed_columns/{removed_column}_removed.html")
     # fig.show()
+
+
+def plot_cm(actual, pred, plot_title):
+    labels = ["Parkinsons", "Healthy"]
+    cm = metrics.confusion_matrix(actual, pred)
+
+    data = go.Heatmap(
+        z=cm,
+        y=labels,
+        x=labels,
+        hovertemplate="<br>".join(
+            [
+                "Predicted: <b>%{x}</b>",
+                "Actual: <b>%{y}</b>",
+                "Occurences %{z}",
+                "<extra></extra>",
+            ]
+        ),
+        colorscale = 'rdylgn'
+    )
+    annotations = []
+    for i, row in enumerate(cm):
+        for j, value in enumerate(row):
+            annotations.append(
+                {
+                    "x": labels[j],
+                    "y": labels[i],
+                    "text": str(value),
+                    "font": {"color": "black", "size": 20},
+                    "xref": "x1",
+                    "yref": "y1",
+                    "showarrow": False,
+                }
+            )
+    layout = go.Layout(
+        title=dict(text=plot_title, x=0.5),
+        xaxis=dict(title="Predicted"),
+        yaxis=dict(title="Actual"),
+        annotations=annotations,
+    )
+    fig = go.Figure(data=data, layout=layout)
+    # fig.show()
+    fig.write_html(f"plots/confusion_matrices/{plot_title}.html")
