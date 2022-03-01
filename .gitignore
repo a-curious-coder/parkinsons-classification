@@ -128,9 +128,15 @@ dmypy.json
 # Pyre type checker
 .pyre/
 
-# Custom
+# Custom Folders
+.vscode/
+__pycache__/
+.venv/
+misc/
 plots/
 models/
+settings/
+
+# Custom Files
 *.html
 *.DS_Store
-.vscode/
