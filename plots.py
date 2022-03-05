@@ -15,10 +15,13 @@ def verify_import():
     pass
 
 
-def plot_loss(loss, val_loss, file_name):
+def plot_loss(loss, val_loss, file_name, title="Training/Validation Loss"):
+
     epochs_range = list(range(1, len(loss) + 1))
+
     loss = [i * 100 for i in loss]
     val_loss = [i * 100 for i in val_loss]
+
     training_loss = go.Scatter(
         x=epochs_range,
         y=loss,
@@ -39,17 +42,29 @@ def plot_loss(loss, val_loss, file_name):
 
     data = [training_loss, validation_loss]
     layout = go.Layout(
-        # yaxis = dict(range = (0, 100)),
-        title=dict(text="Training/Validation Loss", x=0.5)
+        autosize=False,
+        width=1920,
+        height=1080,
+        xaxis=dict(title="Epochs", linecolor="lightgrey", showgrid=False),
+        yaxis=dict(
+            range=(0, 100), title="Accuracy (%)", linecolor="lightgrey", showgrid=False
+        ),
+        title=dict(text=title, x=0.5),
+        paper_bgcolor="rgba(255,255,255,255)",
+        plot_bgcolor="rgba(255,255,255,255)",
+        font=dict(
+            color="black",
+            size=28,  # can change the size of font here
+        ),
     )
     fig = go.Figure(data=data, layout=layout)
     # fig.write_html(f"plots/{file_name}.html")
-    fig.write_image(f"plots/{file_name}.png")
+    fig.write_image(f"plots/nn_training_stats/{file_name}.png")
 
     return fig
 
 
-def plot_accuracy(acc, val_acc, file_name):
+def plot_accuracy(acc, val_acc, file_name, title="Training/Validation Accuracy"):
     """Plots accuracy statistics for neural net models
 
     Args:
@@ -60,14 +75,16 @@ def plot_accuracy(acc, val_acc, file_name):
         [type]: [description]
     """
     epochs_range = list(range(1, len(acc) + 1))
+
     acc = [i * 100 for i in acc]
     val_acc = [i * 100 for i in val_acc]
+
     training_acc = go.Scatter(
         x=epochs_range,
         y=acc,
         mode="markers",
         name="Training Accuracy",
-        marker=dict(color="red"),
+        marker=dict(size=4, color="red", line=dict(width=0.5)),
         hovertemplate="Epoch %{x}<br>Training accuracy: %{y:.2f}%<extra></extra>",
     )
     validation_acc = go.Scatter(
@@ -75,17 +92,29 @@ def plot_accuracy(acc, val_acc, file_name):
         y=val_acc,
         mode="markers+lines",
         name="Validation Accuracy",
-        marker=dict(color="blue"),
+        marker=dict(size=4, color="blue", line=dict(width=0.5)),
         hovertemplate="Epoch %{x}<br>Validation accuracy: %{y:.2f}%<extra></extra>",
     )
     data = [training_acc, validation_acc]
     layout = go.Layout(
-        yaxis=dict(range=(0, 100)),
-        title=dict(text="Training/Validation Accuracy", x=0.5),
+        autosize=False,
+        width=1920,
+        height=1080,
+        xaxis=dict(title="Epochs", linecolor="lightgrey", showgrid=False),
+        yaxis=dict(
+            range=(0, 100), title="Accuracy (%)", linecolor="lightgrey", showgrid=False
+        ),
+        title=dict(text=title, x=0.5),
+        paper_bgcolor="rgba(255,255,255,255)",
+        plot_bgcolor="rgba(255,255,255,255)",
+        font=dict(
+            color="black",
+            size=28,  # can change the size of font here
+        ),
     )
     fig = go.Figure(data=data, layout=layout)
     # fig.write_html(f"plots/{file_name}.html")
-    fig.write_image(f"plots/{file_name}.png")
+    fig.write_image(f"plots/nn_training_stats/{file_name}.png")
     return fig
 
 
@@ -122,7 +151,52 @@ def plot_all_graphs(loss, val_loss, acc, val_acc):
     )
 
 
-def plot_class_ratio(counts, file_name, title):
+def plot_all_graphs():
+    files = [
+        "balanced_accuracy",
+        "balanced_accuracy_smooth",
+        "balanced_loss",
+        "balanced_loss_smooth",
+        "imbalanced_accuracy",
+        "imbalanced_accuracy_smooth",
+        "imbalanced_loss",
+        "imbalanced_loss_smooth",
+    ]
+    # Checks that all files exist
+    for file in files:
+        if not exists(f"plots/nn_acc_loss/{file}.csv"):
+            return
+
+    plot_titles = [
+        "[Balanced] Training | Validation Accuracy",
+        "[Balanced] Smooth Training | Validation Accuracy",
+        "[Balanced] Training | Validation Loss",
+        "[Balanced] Smooth Training | Validation Loss",
+        "[Imbalanced] Training | Validation Accuracy",
+        "[Imbalanced] Smooth Training | Validation Accuracy",
+        "[Imbalanced] Training | Validation Loss",
+        "[Imbalanced] Smooth Training | Validation Loss",
+    ]
+
+    for i, file_name in enumerate(files):
+        stats = pd.read_csv(f"plots/nn_acc_loss/{file_name}.csv")
+        if "Accuracy" in plot_titles[i]:
+            plot_accuracy(
+                stats["acc"].tolist(),
+                stats["val_acc"].tolist(),
+                file_name,
+                title=plot_titles[i],
+            )
+        else:
+            plot_loss(
+                stats["loss"].tolist(),
+                stats["val_loss"].tolist(),
+                file_name,
+                title=plot_titles[i],
+            )
+
+
+def plot_label_distribution(counts, file_name, title):
     df = counts.to_frame()
     # Format labels
     labels = df["status"].value_counts().index.tolist()
@@ -162,50 +236,65 @@ def plot_logistic_regression(points):
             yaxis=dict(title="Value", range=[0, 1]),
         ),
     )
-
     # fig.write_html("plots/logistic_regression.html")
 
 
-def plot_pairplot(data):
-    # textd = ["alzheimers" if cl == 0 else "healthy" for cl in data["status"]]
-    # fig = go.Figure(
-    #     data=go.Splom(
-    #         dimensions=[
-    #             dict(label="MDVP:Fo(Hz)", values=data["MDVP:Fo(Hz)"]),
-    #             dict(label="MDVP:Fhi(Hz)", values=data["MDVP:Fhi(Hz)"]),
-    #             dict(label="MDVP:Flo(Hz)", values=data["MDVP:Flo(Hz)"]),
-    #             dict(label="MDVP:Jitter(%)", values=data["MDVP:Jitter(%)"]),
-    #             dict(label="MDVP:Jitter(Abs)", values=data["MDVP:Jitter(Abs)"]),
-    #             dict(label="MDVP:RAP", values=data["MDVP:RAP"]),
-    #             dict(label="MDVP:PPQ", values=data["MDVP:PPQ"]),
-    #             dict(label="Jitter:DDP", values=data["Jitter:DDP"]),
-    #         ],
-    #         marker=dict(
-    #             color=data["status"],
-    #             size=5,
-    #             colorscale="Bluered",
-    #             line=dict(width=0.5, color="rgb(230,230,230)"),
-    #         ),
-    #         text=textd,
-    #         diagonal=dict(visible=False),
-    #     )
-    # )
-
-    # title = (
-    #     "Scatterplot Matrix (SPLOM) for Parkinsons Dataset<br>Data source:"
-    #     + " <a href='https://archive.ics.uci.edu/ml/datasets/parkinsons'>[1]</a>"
-    # )
-    # fig.update_layout(
-    #     title=title, dragmode="select", width=1000, height=1000, hovermode="closest"
-    # )
-    # fig.write_html("plots/pairplot.html")
-    # fig.write_image("plots/pairplot.png")
-    file_name = "pairplot.png"
+def plot_pairplot(data, file_name="pairplot.png", title="Pairplot"):
     if not plot_exists(file_name):
-        plt.figure()
+        plt.figure(figsize=(10, 12))
+        # Sorts labels so colours are consistent for each label every time it plots
+        data = data.sort_values(by="status")
+        # Replaces labels with meaning
+        data["status"].replace({0: "Alzheimer's", 1: "Healthy"}, inplace=True)
+        # Pairplot with colour representing labels
         sns_plot = sns.pairplot(data, hue="status")
-        plt.title("Repeated K-Fold Cross Validation")
+        plt.suptitle(title)
         sns_plot.figure.savefig(f"plots/{file_name}")
+
+
+def plot_correlation_matrix(df: pd.DataFrame, file_name="correlation_matrix.png"):
+    """
+    A function to calculate and plot
+    correlation matrix of a DataFrame.
+    """
+    plt.rcParams.update({"font.size": 16})
+    df = df.iloc[:, :5]
+    # Create the matrix
+    matrix = df.corr()
+    # Create cmap
+    cmap = sns.diverging_palette(250, 15, s=75, l=40, n=9, center="light", as_cmap=True)
+
+    # Create a mask
+    mask = np.triu(np.ones_like(matrix, dtype=bool))
+
+    # Make figsize bigger
+    fig, ax = plt.subplots(figsize=(16, 16))
+
+    # Plot the matrix
+    _ = sns.heatmap(
+        matrix,
+        mask=mask,
+        center=0,
+        annot=True,
+        fmt=".2f",
+        square=True,
+        cmap=cmap,
+        ax=ax,
+    )
+    # Plot the matrix
+    sns.heatmap(
+        matrix,
+        mask=mask,
+        center=0,
+        annot=True,
+        fmt=".2f",
+        square=True,
+        cmap=cmap,
+        ax=ax,
+    )
+    plt.xticks(rotation=45)
+    plt.yticks(rotation=0)
+    _.figure.savefig(f"plots/{file_name}", transparent=True)
 
 
 def plot_cv_box_plot(cv_models, all_scores, file_name, plot_title):
@@ -220,31 +309,73 @@ def plot_cv_box_plot(cv_models, all_scores, file_name, plot_title):
     # fig.show()
 
     # Colours
-    # c = ['hsl('+str(h)+',50%'+',50%)' for h in np.linspace(0, 360, len(all_scores))]
+    c = [
+        "hsl(" + str(h) + ",50%" + ",50%)" for h in np.linspace(0, 360, len(all_scores))
+    ]
 
-    # fig = go.Figure(data=[go.Box(
-    #     y=all_scores[i],
-    #     marker_color=c[i],
-    #     name = f"Cross Validation {i}"
-    #     ) for i in range(len(all_scores))])
+    fig = go.Figure(
+        data=[
+            go.Box(y=all_scores[i] * 100, marker_color=c[i], name=f"{i+2}")
+            for i in range(len(all_scores))
+        ]
+    )
 
-    # # format the layout
+    # format the layout
     # fig.update_layout(
-    #     title = f"Repeated K-Fold Cross Validation Range[{min(cv_models)}, {max(cv_models)}]",
+    #     title=f"Repeated K-Fold Cross Validation Range[{min(cv_models)}, {max(cv_models)}]",
     #     xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
     #     yaxis=dict(zeroline=True),
-    #     paper_bgcolor='rgb(233,233,233)',
-    #     plot_bgcolor='rgb(233,233,233)',
+    #     paper_bgcolor="rgb(233,233,233)",
+    #     plot_bgcolor="rgb(233,233,233)",
     # )
 
-    # fig.show()
-    if not plot_exists(file_name):
-        plt.figure(figsize=(24, 10))
-        sns.set_style("whitegrid", {"axes.grid": False})
-        sns.boxplot(data=all_scores).set_title(plot_title)
-        plt.xlabel("Cross Validation #")
-        plt.ylabel("Accuracy")
-        plt.savefig(f"plots/{file_name}")
+    fig.update_layout(
+        autosize=False,
+        width=1920,
+        height=1080,
+        xaxis=dict(
+            title="Cross Validation Folds", linecolor="lightgrey", showgrid=False
+        ),
+        yaxis=dict(title="Accuracy (%)", linecolor="lightgrey", showgrid=False),
+        title=dict(
+            text=plot_title,
+            x=0.5,
+        ),
+        paper_bgcolor="rgba(255,255,255,255)",
+        plot_bgcolor="rgba(255,255,255,255)",
+        font=dict(
+            color="black",
+            size=24,  # can change the size of font here
+        ),
+        legend=dict(
+            x=1,
+            y=1,
+            traceorder="normal",
+            font=dict(family="sans-serif", size=18, color="#000"),
+            bgcolor="#E2E2E2",
+            bordercolor="#FFFFFF",
+            borderwidth=2,
+        ),
+        annotations=[
+            dict(
+                x=1.02,
+                y=1.05,
+                xref="paper",
+                yref="paper",
+                text="K",
+                showarrow=False,
+            )
+        ],
+    )
+
+    fig.write_image(f"plots/{file_name}")
+    # if not plot_exists(file_name):
+    #     plt.figure(figsize=(24, 10))
+    #     sns.set_style("whitegrid", {"axes.grid": False})
+    #     sns.boxplot(data=all_scores).set_title(plot_title)
+    #     plt.xlabel("Cross Validation #")
+    #     plt.ylabel("Accuracy")
+    #     plt.savefig(f"plots/{file_name}")
 
 
 def plot_feature_importance(feature_names, indices, importances, std):

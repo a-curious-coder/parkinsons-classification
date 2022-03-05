@@ -1,15 +1,11 @@
 import csv
 import os
 from distutils.util import strtobool
-from unicodedata import numeric
 
-import matplotlib
 from sklearn.preprocessing import StandardScaler
 
 from plots import *
 
-import math
-import random
 import time
 import warnings
 from os.path import exists
@@ -32,7 +28,6 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import (
     accuracy_score,
     f1_score,
-    mean_squared_error,
     precision_score,
     recall_score,
     roc_auc_score,
@@ -40,15 +35,13 @@ from sklearn.metrics import (
 from sklearn.model_selection import (
     GridSearchCV,
     RandomizedSearchCV,
-    StratifiedShuffleSplit,
     cross_val_score,
     train_test_split,
-    KFold,
+    StratifiedKFold,
 )
 from sklearn.svm import SVC
 from tensorflow.keras import layers, models
 from tensorflow.keras.wrappers.scikit_learn import KerasClassifier
-from xgboost import XGBRegressor
 
 
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
@@ -57,16 +50,16 @@ warnings.filterwarnings("ignore")
 
 # ------------- DATA WRANGLING -------------
 def data_wrangling(df):
-    print("-------------------\nPreprocessing\n-------------------")
     if normalise:
-        print("[*]\tNormalize Data")
+        print("[*]\tNormalise Data")
         # Bring all data values to the same range
-        df = normalize_tabular_data(df)
+        df = normalise_tabular_data(df)
+    if remove_correlate_features:
+        print("[*]\tRemove correlating features")
+        # Remove heavily correlating features from data-set (provide redundant information)
+        df = remove_correlating_features(df)
 
-    print("[*]\tDrop 'name' column")
-    # Drop columns that hold no value regarding prediction
-    del df["name"]
-
+    # Remove correlating features above specified threshold
     return df
 
 
@@ -80,6 +73,8 @@ def dimensionality_reduction(X):
         pd.DataFrame: Transformed parkinsons data
     """
     dprint("-------------------\nDimensionality Reduction\n-------------------")
+    # Drop names column as can't reduce dimensions using string column
+    names = X.drop("name", axis=1)
     if apply_pca:
         pca_components = int(os.getenv("PCA_COMPONENTS"))
         pca = PCA(n_components=pca_components, whiten="True")
@@ -100,17 +95,18 @@ def dimensionality_reduction(X):
         )
     else:
         dprint("[*]\tNo Dimensionality Reduction Used")
-
+    # Append name column back to dataframe
+    X["name"] = names
     return X
 
 
-def normalize_tabular_data(data):
-    """Normalizes every numerical value in the given data
+def normalise_tabular_data(data):
+    """normalises every numerical value in the given data
 
     Args:        data (pd.DataFrame): Parkinsons Data
 
     Returns:
-        pd.DataFrame: Normalized Parkinsons data
+        pd.DataFrame: normalised Parkinsons data
     """
     # Exclude string column and label
     avoid = ["status", "name"]
@@ -119,6 +115,33 @@ def normalize_tabular_data(data):
         if column not in avoid:
             data[column] = data[column] / data[column].abs().max()
     return data
+
+
+def remove_correlating_features(df):
+    # Temporarily store names/labels to append back later
+    names = df["name"]
+    labels = df["status"]
+    # Filter dataframe to only include numerical features
+    df = df.select_dtypes(include="number").drop("status", axis=1)
+    # Calculate correlation amongst features in data
+    matrix = df.corr().abs()
+    # Create mask that eliminates mirrored values
+    mask = np.triu(np.ones_like(matrix, dtype=bool))
+    # Apply mask to matrix, only leaving valuable info
+    reduced_matrix = matrix.mask(mask)
+    # If correlation between two features exceeds correlation threshold, store column names to list of sets
+    to_drop = [
+        c for c in reduced_matrix.columns if any(reduced_matrix[c] > corr_threshold)
+    ]
+    # Uncomment to view dropped columns
+    # print(*to_drop, sep="\n")
+    # Drop columns
+    df = df.drop(to_drop, axis=1)
+    # Append original columns that couldn't/shouldn't be processed in this function
+    df["name"] = names
+    df["status"] = labels
+
+    return df
 
 
 # -------- EXPERIMENTAL DIMENSIONALITY REDUCTION
@@ -247,9 +270,6 @@ def split_data_train_test(X, y, test_size):
     else:
         x_train, x_test, y_train, y_test = train_test_split(X, y, test_size=test_size)
 
-    if balance_labels:
-        x_train, y_train = balance_training_data(x_train, y_train)
-
     return x_train, x_test, y_train, y_test
 
 
@@ -267,11 +287,11 @@ def balance_training_data(x_train, y_train):
     X_sm, y_sm = smote.fit_resample(x_train, y_train)
 
     # Plot new ratio in pie chart
-    plot_class_ratio(
-        y_sm,
-        "class_ratio_training_smote",
-        "Balanced Training Data with smote",
-    )
+    # plot_label_distribution(
+    #     y_sm,
+    #     "class_ratio_training_smote",
+    #     "Balanced Training Data with smote",
+    # )
 
     # Return fabricated balanced data
     return X_sm, y_sm
@@ -298,9 +318,9 @@ def find_best_nn_settings(x_train, y_train):
         file_name (str): File name to save parameters as
     """
 
-    file_name = "best_dl_imbalanced.csv"
+    file_name = f"best_dl_imbalanced_{title_template}.csv"
     if balance_labels:
-        file_name = "best_dl_balanced.csv"
+        file_name = f"best_dl_balanced_{title_template}.csv"
 
     if not exists(f"settings/{file_name}"):
         print("[*]\tAttempting to find optimal parameters for Neural Network...")
@@ -315,7 +335,7 @@ def find_best_nn_settings(x_train, y_train):
             "metric": ["accuracy"],
             "init": ["glorot_uniform", "normal", "uniform"],
             "dropout_rate": [0.0, 0.15, 0.3],
-            "batch_size": [512],
+            "batch_size": [24, 96, 256, 512],
             "epochs": [500],
         }
 
@@ -396,7 +416,7 @@ def find_best_rf_settings(x_train, y_train):
     CV_rfc.fit(x_train, y_train)
     end = time.perf_counter()
     print(f"{end-start:.2f} seconds")
-    save_best_params(CV_rfc.best_params_, "best_rf_settings.csv")
+    save_best_params(CV_rfc.best_params_, f"best_rf_settings_{title_template}.csv")
 
 
 def find_best_lr_settings(x_train, y_train):
@@ -427,7 +447,7 @@ def find_best_svm_settings(x_train, y_train):
 
     # fitting the model for grid search
     grid.fit(x_train, y_train)
-    save_best_params(grid.best_params_, "best_svm_settings.csv")
+    save_best_params(grid.best_params_, f"best_svm_settings_{title_template}.csv")
 
 
 # ------------- CLASSIFICATION METHODS -------------
@@ -463,7 +483,7 @@ def isolation_forest(x_train, x_test, y_train, y_test):
     )
 
 
-def extra_trees_classifier(x_train, x_test, y_train, y_test):
+def extra_trees(x_train, x_test, y_train, y_test):
     """Uses Extra trees classifier to calculate each feature's importance in classification
     Creates plots
 
@@ -579,17 +599,18 @@ def cross_validation(model, n, X, y):
         list: list of scores per fold
     """
     # Initialise a cross validation model for cross_val_score to use
-    cv = KFold(n_splits=n, shuffle=True)
+    cv = StratifiedKFold(n_splits=n, shuffle=True)
     # Execute cross validation
     k_scores = cross_val_score(model, X, y, scoring="accuracy", cv=cv, n_jobs=-1)
+
     return k_scores
 
 
-def create_model_rf():
-    if not exists("settings/best_rf_settings.csv"):
+def create_model_rf(x_train, y_train):
+    if not exists(f"settings/best_rf_settings_{title_template}.csv"):
         find_best_rf_settings(x_train, y_train)
     # Load in optimal settings generated by GridSearchCV
-    sdf = pd.read_csv("settings/best_rf_settings.csv")
+    sdf = pd.read_csv(f"settings/best_rf_settings_{title_template}.csv")
     # Extract best settings
     criterion = sdf.iloc[0]["criterion"]
     max_depth = sdf.iloc[0]["max_depth"]
@@ -618,7 +639,7 @@ def random_forest(x_train, x_test, y_train, y_test):
     Returns:
         [type]: [description]
     """
-    rf = create_model_rf()
+    rf = create_model_rf(x_train, y_train)
     # Train model
     rf.fit(x_train, y_train)
     # Predict and
@@ -632,20 +653,20 @@ def random_forest(x_train, x_test, y_train, y_test):
     acc = f"{count / float(len(pred))*100:.2f}"
     print(f"[*]\t{acc}%\t\tRandom Forest")
     plot_title = f"[Imbalanced] Random Forest Confusion Matrix : ({acc}%)"
-    file_name = f"imbalanced_rf_cm"
+    file_name = f"rf_imbalanced_cm"
     if balance_labels:
         plot_title = f"[Balanced] Random Forest Confusion Matrix : ({acc}%)"
-        file_name = f"balanced_rf_cm"
+        file_name = f"rf_balanced_cm"
     plot_cm(actual, pred, plot_title, file_name)
-    return count / float(len(pred)) * 100
+    return actual, pred
 
 
-def create_model_svm():
-    if not exists("settings/best_svm_settings.csv"):
+def create_model_svm(x_train, y_train):
+    if not exists(f"settings/best_svm_settings_{title_template}.csv"):
         find_best_svm_settings(x_train, y_train)
 
     # Load in optimal settings generated by GridSearchCV
-    sdf = pd.read_csv("settings/best_svm_settings.csv")
+    sdf = pd.read_csv(f"settings/best_svm_settings_{title_template}.csv")
     # Extract best settings
     C = sdf.iloc[0]["C"]
     gamma = sdf.iloc[0]["gamma"]
@@ -668,7 +689,7 @@ def svm(x_train, x_test, y_train, y_test):
     Returns:
         [type]: [description]
     """
-    svm = create_model_svm()
+    svm = create_model_svm(x_train, y_train)
     svm.fit(x_train, y_train)
     pred = svm.predict(x_test)
     actual = y_test.values
@@ -680,13 +701,13 @@ def svm(x_train, x_test, y_train, y_test):
     print(f"[*]\t{acc}%\t\tSupport Vector Machine")
 
     plot_title = f"[Imbalanced] SVM Confusion Matrix : ({acc}%)"
-    file_name = f"imbalanced_svm_cm"
+    file_name = f"svm_imbalanced_cm_{title_template}"
     if balance_labels:
         plot_title = f"[Balanced] SVM Confusion Matrix : ({acc}%)"
-        file_name = f"balanced_svm_cm"
+        file_name = f"svm_balanced_cm_{title_template}"
 
     plot_cm(actual, pred, plot_title, file_name)
-    return count / float(len(pred)) * 100
+    return actual, pred
 
 
 def create_model(
@@ -719,16 +740,15 @@ def train_neural_network(x_train, x_test, y_train, y_test):
         x_test (pd.DataFrame): test data
         y_train (pd.DataFrame): training labels
         y_test (pd.DataFrame): test labels
-        file_name ([type]): Name of best settings file
     """
     # Load in epochs from environment variable file
     find_best_nn_settings(x_train, y_train)
 
-    file_name = "best_dl_imbalanced.csv"
+    file_name = f"best_dl_imbalanced_{title_template}.csv"
     plot_title_affix = "imbalanced_dl"
     model_title_affix = "imbalanced"
     if balance_labels:
-        file_name = "best_dl_balanced.csv"
+        file_name = f"best_dl_balanced_{title_template}.csv"
         plot_title_affix = "balanced_dl"
         model_title_affix = "balanced"
 
@@ -749,7 +769,9 @@ def train_neural_network(x_train, x_test, y_train, y_test):
     input_shape = x_test.shape[1]
 
     # If a model hasn't been trained before...
-    if not exists(f"models/parkinsons_model_{epochs}_{model_title_affix}.tf"):
+    if not exists(
+        f"models/parkinsons_model_{epochs}_{model_title_affix}_{title_template}.tf"
+    ):
         dprint("[*]\tTraining Neural Network")
         # Prepare network
         model = create_model(
@@ -770,7 +792,9 @@ def train_neural_network(x_train, x_test, y_train, y_test):
         )
 
         # Save parkinsons model
-        model.save(f"models/parkinsons_model_{epochs}_{model_title_affix}.tf")
+        model.save(
+            f"models/parkinsons_model_{epochs}_{model_title_affix}_{title_template}.tf"
+        )
 
         # Get accuracy / loss data
         history_dict = history.history
@@ -785,8 +809,27 @@ def train_neural_network(x_train, x_test, y_train, y_test):
                 smooth_curve(val_acc),
                 f"parkinsons_accuracy_{epochs}",
             )
+            df = pd.DataFrame({"acc": acc, "val_acc": val_acc})
+            df.to_csv(
+                f"plots/nn_acc_loss/{model_title_affix}_accuracy.csv", index=False
+            )
+            df = pd.DataFrame(
+                {"acc": smooth_curve(acc), "val_acc": smooth_curve(val_acc)}
+            )
+            df.to_csv(
+                f"plots/nn_acc_loss/{model_title_affix}_accuracy_smooth.csv",
+                index=False,
+            )
             plot_loss(
                 smooth_curve(loss), smooth_curve(val_loss), f"parkinsons_loss_{epochs}"
+            )
+            df = pd.DataFrame({"loss": loss, "val_loss": val_loss})
+            df.to_csv(f"plots/nn_acc_loss/{model_title_affix}_loss.csv", index=False)
+            df = pd.DataFrame(
+                {"loss": smooth_curve(loss), "val_loss": smooth_curve(val_loss)}
+            )
+            df.to_csv(
+                f"plots/nn_acc_loss/{model_title_affix}_loss_smooth.csv", index=False
             )
     else:
         dprint("[*]\tModel already trained")
@@ -794,10 +837,10 @@ def train_neural_network(x_train, x_test, y_train, y_test):
 
 def test_neural_network(x_test, y_test):
     """Tests a trained neural network"""
-    file_name = "best_dl_imbalanced.csv"
+    file_name = f"best_dl_imbalanced_{title_template}.csv"
     model_title_affix = "imbalanced"
     if balance_labels:
-        file_name = "best_dl_balanced.csv"
+        file_name = f"best_dl_balanced_{title_template}.csv"
         model_title_affix = "balanced"
     # Read epochs from best neural network settings file
     parms = pd.read_csv(f"settings/{file_name}").to_dict("index")[0]
@@ -807,8 +850,9 @@ def test_neural_network(x_test, y_test):
     # Loads model
     # TODO: Somehow state whether model takes data with reduced dimensions (PCA, LDA)
     model = models.load_model(
-        f"models/parkinsons_model_{epochs}_{model_title_affix}.tf"
+        f"models/parkinsons_model_{epochs}_{model_title_affix}_{title_template}.tf"
     )
+
     # predictions = model.evaluate(x_test, y_test, verbose=0)
     predictions = model.predict(x=x_test)
     new = []
@@ -822,20 +866,46 @@ def test_neural_network(x_test, y_test):
     for i in range(len(pred)):
         if pred[i] == actual[i]:
             count = count + 1
+
     acc = f"{count / float(len(pred))*100:.2f}"
     print(f"[*]\t{acc}%\t\tNeural Network")
 
     plot_title = f"[Imbalanced] Neural Network Confusion Matrix : ({acc}%)"
-    file_name = f"imbalanced_nn_cm"
+    file_name = f"nn_imbalanced_cm"
     if balance_labels:
         plot_title = f"[Balanced] Neural Network Confusion Matrix : ({acc}%)"
-        file_name = f"balanced_nn_cm"
+        file_name = f"nn_balanced_cm"
 
     # Plot confusion matrix of results
     plot_cm(actual, pred, plot_title, file_name)
+    return actual, pred
 
 
 # ------------- MISC METHODS -------------
+def accuracy_table(actual, pred, names, type="all"):
+    actual = ["Healthy" if val == 1 else "Alzheimer's" for val in actual]
+    pred = ["Healthy" if val == 1 else "Alzheimer's" for val in pred]
+
+    labels = pd.DataFrame({"name": names, "actual": actual, "pred": pred})
+
+    if type == "incorrect":
+        # Filters dataframe to only contain incorrect predictions
+        labels = labels.query("actual != pred")
+        print(labels)
+    else:
+        print(labels)
+
+
+def get_accuracy(actual, pred):
+    count = 0
+    for i in range(len(pred)):
+        if pred[i] == actual[i]:
+            count = count + 1
+
+    acc = f"{count / float(len(pred))*100:.2f}"
+    return acc
+
+
 def dprint(text):
     verbose = False
     if verbose:
@@ -848,9 +918,9 @@ def print_title(title):
     Args:
         title (str): title
     """
-    print("-------------------------------")
+    print("--------------------------------------------------------------")
     print(f"\t{title}")
-    print("-------------------------------")
+    print("--------------------------------------------------------------")
 
 
 def cls():
@@ -867,38 +937,44 @@ def prepare_directory():
         "settings",
         "plots/removed_columns",
         "plots/confusion_matrices",
+        "plots/nn_acc_loss",
+        "plots/nn_training_stats",
     ]
     for folder in folders:
         if not os.path.isdir(folder):
             os.mkdir(folder)
 
 
-def main():
-    """Main"""
-    cls()
-    # Load in environment variables from .env
-    load_dotenv()
-
+def initialise_settings():
+    """Initialises global settings for program"""
     # Initialise global variables
+    global eda
+    global plots
+
+    global normalise
+    global remove_correlate_features
     global balance_labels
+    global corr_threshold
+    global dimensionality_reduction
+    global stratify
+    global manual_settings
     global test_size
     global val_size
-    global manual_settings
-    global balance_data
-    global normalise
     global apply_pca
     global apply_tsvd
-    global stratify
     global experimental
-    global rewrite_model
-    global plots
     global grid_search
+    global random_search
+    global rewrite_model
+    global cv
 
     # set environment variables
     eda = strtobool(os.getenv("EDA"))
     plots = strtobool(os.getenv("PLOTS"))
 
     normalise = strtobool(os.getenv("NORMALISE"))
+    remove_correlate_features = strtobool(os.getenv("REMOVE_CORRELATED_FEATURES"))
+    corr_threshold = float(os.getenv("CORRELATION_DROP_THRESHOLD"))
     balance_labels = strtobool(os.getenv("BALANCE_TRAINING_LABELS"))
     stratify = strtobool(os.getenv("STRATIFY"))
     dimensionality_reduction = strtobool(os.getenv("DIMENSIONALITY_REDUCTION"))
@@ -916,6 +992,30 @@ def main():
 
     rewrite_model = strtobool(os.getenv("OVERWRITE_NEURAL_MODEL"))
 
+    cv = strtobool(os.getenv("CROSS_VALIDATION"))
+
+    global title_template
+    title_template = "norm_rcf_bl"
+    if not normalise:
+        title_template = title_template.replace("norm_", "")
+    if not remove_correlate_features:
+        title_template = title_template.replace("rcf_", "")
+    if not balance_labels:
+        title_template = title_template.replace("bl", "")
+
+
+# ------------- MAIN METHODS -------------
+def main():
+    """Main"""
+
+    cls()
+
+    # Load in environment variables from .env
+    load_dotenv()
+
+    # Initialises global settings for program using loaded environment variables
+    initialise_settings()
+
     # Prepare directories for program
     prepare_directory()
 
@@ -924,6 +1024,7 @@ def main():
 
     # EDA
     if eda:
+        print_title("Exploratory Data Analysis")
         # print_t
         print(df.info())
         # Number of names
@@ -931,38 +1032,26 @@ def main():
         # Label distribution
         print(f"Label distribution\n{df['status'].value_counts()}")
 
-        print_title("Generating Plots")
-        plot_class_ratio(df["status"], "class_ratio_all_data", "All Data Labels Ratio")
         # Filters dataframe to only include numeric data
         numeric_dataframe = df.select_dtypes(include=np.number)
-        # Remove label column
-        del numeric_dataframe["status"]
 
-        # if plots:
-        #     numeric_dataframe = normalize_tabular_data(numeric_dataframe)
-        #     print(
-        #         "[*]\tPopulation Density Function PDF of features with target variables"
-        #     )
-        #     fig = create_distplot(
-        #         [numeric_dataframe[column] for column in numeric_dataframe.columns],
-        #         numeric_dataframe.columns,
-        #         bin_size=[2, 2],
-        #         show_rug=False,  # rug
-        #         show_hist=False,  # hist
-        #         show_curve=True,  # curve
-        #     )
-        #     fig.show()
+        if plots:
+            print_title("Generating EDA Plots")
+            print("[*]\tPlotted label distribution")
+            # Label ratio
+            plot_label_distribution(
+                df["status"], "class_ratio_all_data", "All Data Labels Ratio"
+            )
+            print("[*]\tPlotting pair plot")
+            # Plots pairwise correlation
+            plot_pairplot(numeric_dataframe)
+            print("[*]\tPlorring correlation matrix")
+            # Plots matrix of plots showing correlation between features in data
+            plot_correlation_matrix(numeric_dataframe)
 
+    print_title("Pre-processing")
     # Transform data based on information discovered through eda
     df = data_wrangling(df)
-
-    if plots:
-        # Plots pairwise correlation
-        plot_pairplot(df)
-
-    if experimental:
-        if not exists("misc/removed_columns.csv"):
-            predict_minus_feature(df)
 
     # Split data into data and labels
     X, y = data_label_split(df)
@@ -972,6 +1061,10 @@ def main():
         X = dimensionality_reduction(X)
 
     if experimental:
+        print_title("Experimental")
+        if not exists("misc/removed_columns.csv"):
+            predict_minus_feature(df)
+
         with open("misc/removed_columns.csv", newline="") as f:
             reader = csv.reader(f)
             data = list(reader)
@@ -983,41 +1076,82 @@ def main():
     # Split data and labels into training/test sets
     x_train, x_test, y_train, y_test = split_data_train_test(X, y, test_size)
 
-    # # Identify outliers
-    # isolation_forest(x_train, x_test, y_train, y_test)
+    print("[*]\tDrop 'name' column")
+    # Drop columns that hold no value regarding prediction
+    # Drop names from train/test data, store names from test data to array for later
+    x_train.drop("name", axis=1, inplace=True)
+    n_test = x_test["name"].tolist()
+    x_test.drop("name", axis=1, inplace=True)
 
-    # # Feature importance
-    # extra_trees_classifier(x_train, x_test, y_train, y_test)
+    title = f"Classification Model [Imbalanced Training Labels]"
+    if balance_labels:
+        title = f"Classification Model [Balanced Training Labels]"
+        x_train, y_train = balance_training_data(x_train, y_train)
+
+    # Identify outliers
+    isolation_forest(x_train, x_test, y_train, y_test)
+
+    # Feature importance
+    extra_trees(x_train, x_test, y_train, y_test)
 
     # # logistic_regression(x_train, x_test, y_train, y_test)
-    # # linear_regression(x_train, x_test, y_train, y_test)
-    # print("------------------------------------------------")
-    # print(f"\t\tClassification Models\t\t")
-    # print("------------------------------------------------")
-    # print("\tAccuracy\tClassification Model\t")
-    # print("------------------------------------------------")
-    # svm(x_train, x_test, y_train, y_test)
-    # random_forest(x_train, x_test, y_train, y_test)
-    # train_neural_network(x_train, x_test, y_train, y_test)
-    # test_neural_network(x_test, y_test)
+    linear_regression(x_train, x_test, y_train, y_test)
 
-    print_title("Cross Validation")
+    print_title(title)
+    print("\tAccuracy\tClassification Model\t")
+    print("------------------------------------------------")
+    a1, p1 = svm(x_train, x_test, y_train, y_test)
+    # accuracy_table(a1, p1, n_test, "incorrect")
 
-    models = {"Random Forest": create_model_rf(), "SVM": create_model_svm()}
-    max_folds = 10
-    cv_models = range(2, max_folds + 1)
-    for key, model in models.items():
-        all_scores = []
-        for i in cv_models:
-            k_scores = cross_validation(model, i, X, y)
-            all_scores.append(k_scores)
-            # Print mean accuracy
-            print(
-                f"[{i}]\tCross Validation Accuracy of {k_scores.mean()*100:.2f}%\t{key}"
-            )
-        file_name = f"boxplot_{key}_{i}.png"
-        plot_title = f"{key} Box Plot Repeated K-Fold Cross Validation"
-        plot_cv_box_plot(cv_models, all_scores, file_name, plot_title)
+    a2, p2 = random_forest(x_train, x_test, y_train, y_test)
+    # accuracy_table(a2, p2, n_test, "incorrect")
+
+    train_neural_network(x_train, x_test, y_train, y_test)
+    a3, p3 = test_neural_network(x_test, y_test)
+    # accuracy_table(a3, p3, n_test, "incorrect")
+    
+    if plots:
+        print_title("Post Classification Plots")
+        model_results = {"Random Forest": (a1, p1), "SVM": (a2, p2), "NN": (a3, p3)}
+
+        # for actual, pred in zip(actuals, predictions):
+        for model, results in model_results.items():
+            actual = results[0]
+            pred = results[1]
+            labels = [actual, pred]
+            files = ["actual", "pred"]
+            for label, file in zip(labels, files):
+                data = x_test.copy()
+                data = data.iloc[:, :5]
+                data["status"] = label
+                plot_pairplot(
+                    data,
+                    f"{model}_{file}_pairplot.png",
+                    f"{model}, {file} labels, {get_accuracy(actual, pred)}%",
+                )
+    if cv:
+        del X["name"]
+        print_title("Cross Validation")
+        print("Folds\tAcc\tMethod")
+        models = {
+            "Random Forest": create_model_rf(x_train, y_train),
+            "Support Vector Machine": create_model_svm(x_train, y_train),
+        }
+        max_folds = 10
+        cv_models = range(2, max_folds + 2)
+        for key, model in models.items():
+            all_scores = []
+            for i in cv_models:
+                k_scores = cross_validation(model, i, X, y)
+                all_scores.append(k_scores)
+                # Print mean accuracy
+                print(f"  {i}\t{k_scores.mean()*100:.2f}%\t{key}")
+
+            file_name = f"boxplot_{key}_{i-1}.png"
+            plot_title = f"{key} Repeated K-Fold Cross Validation"
+
+            if plots:
+                plot_cv_box_plot(cv_models, all_scores, file_name, plot_title)
 
 
 if __name__ == "__main__":
