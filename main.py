@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 import csv
 import os
 from distutils.util import strtobool
@@ -45,6 +46,7 @@ from tensorflow.keras.wrappers.scikit_learn import KerasClassifier
 
 
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
+pd.set_option("display.float_format", lambda x: "%.3f" % x)
 warnings.filterwarnings("ignore")
 
 
@@ -129,12 +131,13 @@ def remove_correlating_features(df):
     mask = np.triu(np.ones_like(matrix, dtype=bool))
     # Apply mask to matrix, only leaving valuable info
     reduced_matrix = matrix.mask(mask)
-    # If correlation between two features exceeds correlation threshold, store column names to list of sets
+    # If correlation between two features exceeds correlation threshold, store first column name to list of sets
     to_drop = [
         c for c in reduced_matrix.columns if any(reduced_matrix[c] > corr_threshold)
     ]
     # Uncomment to view dropped columns
     # print(*to_drop, sep="\n")
+
     # Drop columns
     df = df.drop(to_drop, axis=1)
     # Append original columns that couldn't/shouldn't be processed in this function
@@ -503,7 +506,7 @@ def extra_trees(x_train, x_test, y_train, y_test):
     indices = np.argsort(importances)[::-1]
     indices = indices[:TOP_FEATURES]
 
-    plot_feature_importance(x_train.columns, indices, importances, std)
+    return x_train.columns, indices, importances, std
 
 
 def linear_regression(x_train, x_test, y_train, y_test):
@@ -811,25 +814,30 @@ def train_neural_network(x_train, x_test, y_train, y_test):
             )
             df = pd.DataFrame({"acc": acc, "val_acc": val_acc})
             df.to_csv(
-                f"plots/nn_acc_loss/{model_title_affix}_accuracy.csv", index=False
+                f"plots/neural network/nn_acc_loss/{model_title_affix}_accuracy.csv",
+                index=False,
             )
             df = pd.DataFrame(
                 {"acc": smooth_curve(acc), "val_acc": smooth_curve(val_acc)}
             )
             df.to_csv(
-                f"plots/nn_acc_loss/{model_title_affix}_accuracy_smooth.csv",
+                f"plots/neural network/nn_acc_loss/{model_title_affix}_accuracy_smooth.csv",
                 index=False,
             )
             plot_loss(
                 smooth_curve(loss), smooth_curve(val_loss), f"parkinsons_loss_{epochs}"
             )
             df = pd.DataFrame({"loss": loss, "val_loss": val_loss})
-            df.to_csv(f"plots/nn_acc_loss/{model_title_affix}_loss.csv", index=False)
+            df.to_csv(
+                f"plots/neural network/nn_acc_loss/{model_title_affix}_loss.csv",
+                index=False,
+            )
             df = pd.DataFrame(
                 {"loss": smooth_curve(loss), "val_loss": smooth_curve(val_loss)}
             )
             df.to_csv(
-                f"plots/nn_acc_loss/{model_title_affix}_loss_smooth.csv", index=False
+                f"plots/neural network/nn_acc_loss/{model_title_affix}_loss_smooth.csv",
+                index=False,
             )
     else:
         dprint("[*]\tModel already trained")
@@ -937,8 +945,11 @@ def prepare_directory():
         "settings",
         "plots/removed_columns",
         "plots/confusion_matrices",
-        "plots/nn_acc_loss",
-        "plots/nn_training_stats",
+        "plots/neural_network",
+        "plots/neural_network/nn_acc_loss",
+        "plots/neural_network/nn_training_stats",
+        "plots/SVM",
+        "plots/RF",
     ]
     for folder in folders:
         if not os.path.isdir(folder):
@@ -1025,8 +1036,8 @@ def main():
     # EDA
     if eda:
         print_title("Exploratory Data Analysis")
-        # print_t
         print(df.info())
+        print(df.describe())
         # Number of names
         print(f"Patient Frequency: {len(df['name'].unique())}")
         # Label distribution
@@ -1044,10 +1055,27 @@ def main():
             )
             print("[*]\tPlotting pair plot")
             # Plots pairwise correlation
-            plot_pairplot(numeric_dataframe)
-            print("[*]\tPlorring correlation matrix")
+            for kind in ["reg", "scatter"]:
+                plot_pairplot(
+                    numeric_dataframe, file_name="full_pairplot.png", kind=kind
+                )
+                first_five = list(numeric_dataframe.columns[:5])
+                first_five.append("status")
+                plot_pairplot(
+                    numeric_dataframe[first_five],
+                    file_name="partial_pairplot.png",
+                    kind=kind,
+                )
+            print("[*]\tPlotting correlation matrix")
             # Plots matrix of plots showing correlation between features in data
-            plot_correlation_matrix(numeric_dataframe)
+            plot_correlation_matrix(
+                numeric_dataframe, file_name="full_correlation_matrix.png"
+            )
+
+            plot_correlation_matrix(
+                numeric_dataframe.iloc[:4, :4],
+                file_name="partial_correlation_matrix.png",
+            )
 
     print_title("Pre-processing")
     # Transform data based on information discovered through eda
@@ -1092,7 +1120,16 @@ def main():
     isolation_forest(x_train, x_test, y_train, y_test)
 
     # Feature importance
-    extra_trees(x_train, x_test, y_train, y_test)
+    x_train.columns, indices, importances, std = extra_trees(
+        x_train, x_test, y_train, y_test
+    )
+    plot_feature_importance(
+        x_train.columns,
+        indices,
+        importances,
+        std,
+        f"feature_importance_{title_template}.png",
+    )
 
     # # logistic_regression(x_train, x_test, y_train, y_test)
     linear_regression(x_train, x_test, y_train, y_test)
@@ -1109,26 +1146,23 @@ def main():
     train_neural_network(x_train, x_test, y_train, y_test)
     a3, p3 = test_neural_network(x_test, y_test)
     # accuracy_table(a3, p3, n_test, "incorrect")
-    
+
     if plots:
         print_title("Post Classification Plots")
         model_results = {"Random Forest": (a1, p1), "SVM": (a2, p2), "NN": (a3, p3)}
 
+        # TODO: Scatter plots to compare predicted with actual labels
         # for actual, pred in zip(actuals, predictions):
         for model, results in model_results.items():
+            print(f"[*]\tPlotting labels for {model}")
             actual = results[0]
             pred = results[1]
-            labels = [actual, pred]
-            files = ["actual", "pred"]
-            for label, file in zip(labels, files):
-                data = x_test.copy()
-                data = data.iloc[:, :5]
-                data["status"] = label
-                plot_pairplot(
-                    data,
-                    f"{model}_{file}_pairplot.png",
-                    f"{model}, {file} labels, {get_accuracy(actual, pred)}%",
-                )
+            data = x_test.copy()
+            data = data[["PPE", "MDVP:APQ"]]
+            data["actual"] = actual
+            data["pred"] = pred
+            plot_actual_vs_pred(data)
+
     if cv:
         del X["name"]
         print_title("Cross Validation")
@@ -1147,7 +1181,10 @@ def main():
                 # Print mean accuracy
                 print(f"  {i}\t{k_scores.mean()*100:.2f}%\t{key}")
 
-            file_name = f"boxplot_{key}_{i-1}.png"
+            file_name = f"boxplot_svm_{i-1}_cv.png"
+            if "Random Forest" in key:
+                file_name = f"boxplot_rf_{i-1}_cv.png"
+
             plot_title = f"{key} Repeated K-Fold Cross Validation"
 
             if plots:

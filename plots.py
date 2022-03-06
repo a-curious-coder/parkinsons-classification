@@ -59,7 +59,7 @@ def plot_loss(loss, val_loss, file_name, title="Training/Validation Loss"):
     )
     fig = go.Figure(data=data, layout=layout)
     # fig.write_html(f"plots/{file_name}.html")
-    fig.write_image(f"plots/nn_training_stats/{file_name}.png")
+    fig.write_image(f"plots/neural_network/nn_training_stats/{file_name}.png")
 
     return fig
 
@@ -114,7 +114,7 @@ def plot_accuracy(acc, val_acc, file_name, title="Training/Validation Accuracy")
     )
     fig = go.Figure(data=data, layout=layout)
     # fig.write_html(f"plots/{file_name}.html")
-    fig.write_image(f"plots/nn_training_stats/{file_name}.png")
+    fig.write_image(f"plots/neural_network/nn_training_stats/{file_name}.png")
     return fig
 
 
@@ -127,28 +127,6 @@ def smooth_curve(points, factor=0.8):
         else:
             smoothed_points.append(point)
     return smoothed_points
-
-
-def plot_all_graphs(loss, val_loss, acc, val_acc):
-    """Plots the neural network model's accuracy and loss on same figure
-    Args:
-        loss ([type]): [description]
-        val_loss ([type]): [description]
-        acc ([type]): [description]
-        val_acc ([type]): [description]
-    """
-    fig = make_subplots(rows=1, cols=2)
-
-    # Get loss and accuracy statistics
-    fig1 = plot_loss(loss, val_loss)
-    fig2 = plot_accuracy(acc, val_acc)
-
-    fig.append_trace(fig1, row=1, col=1)
-    fig.append_trace(fig2, row=1, col=2)
-
-    fig.update_layout(
-        height=600, width=1000, title=dict(text="Deep Learning Model Statistics", x=0.5)
-    )
 
 
 def plot_all_graphs():
@@ -164,7 +142,7 @@ def plot_all_graphs():
     ]
     # Checks that all files exist
     for file in files:
-        if not exists(f"plots/nn_acc_loss/{file}.csv"):
+        if not exists(f"plots/neural_network/nn_acc_loss/{file}.csv"):
             return
 
     plot_titles = [
@@ -179,7 +157,7 @@ def plot_all_graphs():
     ]
 
     for i, file_name in enumerate(files):
-        stats = pd.read_csv(f"plots/nn_acc_loss/{file_name}.csv")
+        stats = pd.read_csv(f"plots/neural_network/nn_acc_loss/{file_name}.csv")
         if "Accuracy" in plot_titles[i]:
             plot_accuracy(
                 stats["acc"].tolist(),
@@ -236,10 +214,10 @@ def plot_logistic_regression(points):
             yaxis=dict(title="Value", range=[0, 1]),
         ),
     )
-    # fig.write_html("plots/logistic_regression.html")
 
 
-def plot_pairplot(data, file_name="pairplot.png", title="Pairplot"):
+def plot_pairplot(data, file_name="pairplot.png", title="Pairplot", kind="scatter"):
+    file_name = f"{kind}_{file_name}"
     if not plot_exists(file_name):
         plt.figure(figsize=(10, 12))
         # Sorts labels so colours are consistent for each label every time it plots
@@ -247,9 +225,22 @@ def plot_pairplot(data, file_name="pairplot.png", title="Pairplot"):
         # Replaces labels with meaning
         data["status"].replace({0: "Alzheimer's", 1: "Healthy"}, inplace=True)
         # Pairplot with colour representing labels
-        sns_plot = sns.pairplot(data, hue="status")
-        plt.suptitle(title)
-        sns_plot.figure.savefig(f"plots/{file_name}")
+        sns_plot = sns.pairplot(
+            data,
+            hue="status",
+            kind="reg",
+            plot_kws={"line_kws": {"color": "red"}, "scatter_kws": {"alpha": 0.4}},
+        )
+        sns_plot.fig.suptitle(title, y=1.08, size=20)  # y= some height>1
+
+        if "Random Forest" in file_name:
+            sns_plot.figure.savefig(f"plots/RF/{file_name}")
+        elif "SVM" in file_name:
+            sns_plot.figure.savefig(f"plots/SVM/{file_name}")
+        elif "NN" in file_name:
+            sns_plot.figure.savefig(f"plots/neural network/{file_name}")
+        else:
+            sns_plot.figure.savefig(f"plots/{file_name}")
 
 
 def plot_correlation_matrix(df: pd.DataFrame, file_name="correlation_matrix.png"):
@@ -258,56 +249,42 @@ def plot_correlation_matrix(df: pd.DataFrame, file_name="correlation_matrix.png"
     correlation matrix of a DataFrame.
     """
     plt.rcParams.update({"font.size": 16})
-    df = df.iloc[:, :5]
+    if "partial" in file_name:
+        plt.rcParams.update({"font.size": 42})
+        file_name = file_name.replace("partial", "partial_whole")
+    # df = df.iloc[:, :5]
     # Create the matrix
     matrix = df.corr()
     # Create cmap
     cmap = sns.diverging_palette(250, 15, s=75, l=40, n=9, center="light", as_cmap=True)
 
     # Create a mask
-    mask = np.triu(np.ones_like(matrix, dtype=bool))
+    # mask = np.triu(np.ones_like(matrix, dtype=bool))
 
     # Make figsize bigger
-    fig, ax = plt.subplots(figsize=(16, 16))
+    fig, ax = plt.subplots(figsize=(22, 22))
 
     # Plot the matrix
     _ = sns.heatmap(
         matrix,
-        mask=mask,
+        # mask=mask,
         center=0,
         annot=True,
         fmt=".2f",
         square=True,
         cmap=cmap,
         ax=ax,
+        cbar=False,
+        # cbar_kws={"shrink": 0.70},
     )
-    # Plot the matrix
-    sns.heatmap(
-        matrix,
-        mask=mask,
-        center=0,
-        annot=True,
-        fmt=".2f",
-        square=True,
-        cmap=cmap,
-        ax=ax,
-    )
+
     plt.xticks(rotation=45)
     plt.yticks(rotation=0)
-    _.figure.savefig(f"plots/{file_name}", transparent=True)
+    plt.tight_layout()
+    _.figure.savefig(f"plots/{file_name}")
 
 
 def plot_cv_box_plot(cv_models, all_scores, file_name, plot_title):
-    # fig = go.Figure()
-    # print(all_scores)
-    # i = 0
-    # for scores in all_scores:
-    #     i += 1
-    #     fig.add_trace(go.Box(y=scores, quartilemethod="linear", name = f"CV{i}"))
-    # fig.update_traces(boxpoints="all", jitter=0)
-    # fig.update_layout()
-    # fig.show()
-
     # Colours
     c = [
         "hsl(" + str(h) + ",50%" + ",50%)" for h in np.linspace(0, 360, len(all_scores))
@@ -319,15 +296,6 @@ def plot_cv_box_plot(cv_models, all_scores, file_name, plot_title):
             for i in range(len(all_scores))
         ]
     )
-
-    # format the layout
-    # fig.update_layout(
-    #     title=f"Repeated K-Fold Cross Validation Range[{min(cv_models)}, {max(cv_models)}]",
-    #     xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
-    #     yaxis=dict(zeroline=True),
-    #     paper_bgcolor="rgb(233,233,233)",
-    #     plot_bgcolor="rgb(233,233,233)",
-    # )
 
     fig.update_layout(
         autosize=False,
@@ -368,17 +336,15 @@ def plot_cv_box_plot(cv_models, all_scores, file_name, plot_title):
         ],
     )
 
-    fig.write_image(f"plots/{file_name}")
-    # if not plot_exists(file_name):
-    #     plt.figure(figsize=(24, 10))
-    #     sns.set_style("whitegrid", {"axes.grid": False})
-    #     sns.boxplot(data=all_scores).set_title(plot_title)
-    #     plt.xlabel("Cross Validation #")
-    #     plt.ylabel("Accuracy")
-    #     plt.savefig(f"plots/{file_name}")
+    if "rf" in file_name:
+        fig.write_image(f"plots/RF/{file_name}")
+    else:
+        fig.write_image(f"plots/SVM/{file_name}")
 
 
-def plot_feature_importance(feature_names, indices, importances, std):
+def plot_feature_importance(
+    feature_names, indices, importances, std, file_name="feature_importance"
+):
     """Plots feature importance
 
     Args:
@@ -387,7 +353,6 @@ def plot_feature_importance(feature_names, indices, importances, std):
         importances (_type_): _description_
         std (_type_): _description_
     """
-    file_name = "feature_importance"
     if not plot_exists(f"{file_name}.png"):
         hovertexts = []
         # Scale up elements to get better representation of percentage value
@@ -480,7 +445,6 @@ def plot_removed_features(a_predictions, removed_column="Unknown"):
         y=0.1,
         showarrow=False,
     )
-    # fig.write_html(f"plots/removed_columns/{removed_column}_removed.html")
 
 
 def plot_cm(actual, pred, plot_title, file_name):
@@ -521,9 +485,69 @@ def plot_cm(actual, pred, plot_title, file_name):
         yaxis=dict(title="Actual"),
         annotations=annotations,
     )
+
     fig = go.Figure(data=data, layout=layout)
     # fig.write_html(f"plots/confusion_matrices/{file_name}.html")
     fig.write_image(f"plots/confusion_matrices/{file_name}.png")
+
+
+def f(x):
+    return True if x["actual"] == x["pred"] else False
+
+
+def plot_actual_vs_pred(
+    data, file_name="label_classification.png", title="Label classifications"
+):
+
+    # Boolean column dictating if predicted is correct
+    data["correct"] = data.apply(f, axis=1)
+    correct = data[data["correct"] == True]
+    incorrect = data[data["correct"] == False]
+
+    # return
+    correct_labels = go.Scatter(
+        x=correct.iloc[:, 0],
+        y=correct.iloc[:, 1],
+        mode="markers",
+        name="Correctly Classified Labels",
+        marker=dict(size=12, color="green", line=dict(width=0.5)),
+        hovertemplate="X %{x:.2f}<br>Y: %{y:.2f}<extra></extra>",
+    )
+
+    incorrect_labels = go.Scatter(
+        x=incorrect.iloc[:, 0],
+        y=incorrect.iloc[:, 1],
+        mode="markers",
+        name="Incorrectly Classified Labels",
+        marker=dict(size=10, color="red", line=dict(width=0.5)),
+        hovertemplate="X %{x:.2f}<br>Y: %{y:.2f}<extra></extra>",
+    )
+
+    plot_data = [correct_labels, incorrect_labels]
+    layout = go.Layout(
+        xaxis=dict(title=list(data.columns)[0], linecolor="lightgrey", showgrid=False),
+        yaxis=dict(title=list(data.columns)[1], linecolor="lightgrey", showgrid=False),
+        title=dict(text=title, x=0.5),
+        paper_bgcolor="rgba(255,255,255,255)",
+        plot_bgcolor="rgba(255,255,255,255)",
+        legend=dict(
+            x=1,
+            y=1,
+            traceorder="normal",
+            font=dict(family="sans-serif", size=18, color="#FFF"),
+            bgcolor="#E2E2E2",
+            bordercolor="#FFFFFF",
+            borderwidth=2,
+        ),
+        font=dict(
+            color="black",
+            size=18,  # can change the size of font here
+        ),
+    )
+    fig = go.Figure(data=plot_data, layout=layout)
+    # fig.write_html(f"plots/{file_name}.html")
+    fig.write_image(f"plots/{file_name}")
+    # fig.show()
 
 
 def plot_exists(file_name):
