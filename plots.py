@@ -1,13 +1,13 @@
-import numpy as np
-import plotly.graph_objs as go
-import plotly.express as px
-import matplotlib.pyplot as plt
-import seaborn as sns
 from os.path import exists
-from seaborn import pairplot
-from plotly.subplots import make_subplots
-from sklearn import metrics
+
+import numpy as np
 import pandas as pd
+import seaborn as sns
+from matplotlib import pyplot as plt
+from plotly import express as px, graph_objs as go
+from plotly.subplots import make_subplots
+from seaborn import pairplot
+from sklearn import metrics
 
 
 def verify_import():
@@ -47,7 +47,7 @@ def plot_loss(loss, val_loss, file_name, title="Training/Validation Loss"):
         height=1080,
         xaxis=dict(title="Epochs", linecolor="lightgrey", showgrid=False),
         yaxis=dict(
-            range=(0, 100), title="Accuracy (%)", linecolor="lightgrey", showgrid=False
+            range=(0, 100), title="Loss", linecolor="lightgrey", showgrid=False
         ),
         title=dict(text=title, x=0.5),
         paper_bgcolor="rgba(255,255,255,255)",
@@ -157,7 +157,8 @@ def plot_all_graphs():
     ]
 
     for i, file_name in enumerate(files):
-        stats = pd.read_csv(f"plots/neural_network/nn_acc_loss/{file_name}.csv")
+        stats = pd.read_csv(
+            f"plots/neural_network/nn_acc_loss/{file_name}.csv")
         if "Accuracy" in plot_titles[i]:
             plot_accuracy(
                 stats["acc"].tolist(),
@@ -175,6 +176,7 @@ def plot_all_graphs():
 
 
 def plot_label_distribution(counts, file_name, title):
+
     df = counts.to_frame()
     # Format labels
     labels = df["status"].value_counts().index.tolist()
@@ -187,7 +189,6 @@ def plot_label_distribution(counts, file_name, title):
     colors = ["red", "mediumturquoise"]
     fig = go.Figure(
         data=go.Pie(
-            title="Label Distribution",
             labels=labels,
             values=values,
             hole=0.5,
@@ -199,10 +200,24 @@ def plot_label_distribution(counts, file_name, title):
         layout=go.Layout(
             paper_bgcolor="rgba(0,0,0,0)",
             plot_bgcolor="rgba(0,0,0,0)",
-        ),
+            legend=dict(
+                orientation="h",
+                xanchor="center",
+                x=0.5,
+                font=dict(
+                    family="Verdana",
+                    size=18,
+                    color="black"
+                ))
+        )
     )
+    fig.add_annotation(x=0.5, y=0.5,
+                       text='Label<br>Distribution',
+                       font=dict(size=16, family='Verdana',
+                                 color='black'),
+                       showarrow=False)
     # fig.write_html(f"plots/{file_name}.html")
-    fig.write_image(f"plots/{file_name}.png")
+    fig.write_image(f"plots/{file_name}.png", scale=1)
 
 
 def plot_logistic_regression(points):
@@ -223,13 +238,15 @@ def plot_pairplot(data, file_name="pairplot.png", title="Pairplot", kind="scatte
         # Sorts labels so colours are consistent for each label every time it plots
         data = data.sort_values(by="status")
         # Replaces labels with meaning
-        data["status"].replace({0: "Alzheimer's", 1: "Healthy"}, inplace=True)
+        data["status"].replace(
+            {0: "Alzheimer's", 1: "Healthy"}, inplace=True)
         # Pairplot with colour representing labels
         sns_plot = sns.pairplot(
             data,
             hue="status",
             kind="reg",
-            plot_kws={"line_kws": {"color": "red"}, "scatter_kws": {"alpha": 0.4}},
+            plot_kws={"line_kws": {"color": "red"},
+                      "scatter_kws": {"alpha": 0.4}},
         )
         sns_plot.fig.suptitle(title, y=1.08, size=20)  # y= some height>1
 
@@ -256,7 +273,8 @@ def plot_correlation_matrix(df: pd.DataFrame, file_name="correlation_matrix.png"
     # Create the matrix
     matrix = df.corr()
     # Create cmap
-    cmap = sns.diverging_palette(250, 15, s=75, l=40, n=9, center="light", as_cmap=True)
+    cmap = sns.diverging_palette(
+        250, 15, s=75, l=40, n=9, center="light", as_cmap=True)
 
     # Create a mask
     # mask = np.triu(np.ones_like(matrix, dtype=bool))
@@ -304,7 +322,8 @@ def plot_cv_box_plot(cv_models, all_scores, file_name, plot_title):
         xaxis=dict(
             title="Cross Validation Folds", linecolor="lightgrey", showgrid=False
         ),
-        yaxis=dict(title="Accuracy (%)", linecolor="lightgrey", showgrid=False),
+        yaxis=dict(title="Accuracy (%)",
+                   linecolor="lightgrey", showgrid=False),
         title=dict(
             text=plot_title,
             x=0.5,
@@ -397,7 +416,7 @@ def plot_feature_importance(
             ),
         )
         # fig.write_html(f"plots/{file_name}.html")
-        fig.write_image(f"plots/{file_name}.png")
+        fig.write_image(f"plots/{file_name}")
 
 
 def plot_removed_features(a_predictions, removed_column="Unknown"):
@@ -525,8 +544,10 @@ def plot_actual_vs_pred(
 
     plot_data = [correct_labels, incorrect_labels]
     layout = go.Layout(
-        xaxis=dict(title=list(data.columns)[0], linecolor="lightgrey", showgrid=False),
-        yaxis=dict(title=list(data.columns)[1], linecolor="lightgrey", showgrid=False),
+        xaxis=dict(title=list(data.columns)[
+                   0], linecolor="lightgrey", showgrid=False),
+        yaxis=dict(title=list(data.columns)[
+                   1], linecolor="lightgrey", showgrid=False),
         title=dict(text=title, x=0.5),
         paper_bgcolor="rgba(255,255,255,255)",
         plot_bgcolor="rgba(255,255,255,255)",

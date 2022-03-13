@@ -1,22 +1,17 @@
 #!/usr/bin/env python
 import csv
 import os
-from distutils.util import strtobool
-
-from sklearn.preprocessing import StandardScaler
-
-from plots import *
-
 import time
 import warnings
+from distutils.util import strtobool
 from os.path import exists
 
 import numpy as np
 import pandas as pd
-import plotly.graph_objects as go
 import tensorflow as tf
 from dotenv import load_dotenv
 from imblearn.over_sampling import SMOTE
+from plotly import graph_objects as go
 from plotly.figure_factory import create_distplot
 from sklearn import linear_model
 from sklearn.decomposition import PCA, TruncatedSVD
@@ -36,13 +31,16 @@ from sklearn.metrics import (
 from sklearn.model_selection import (
     GridSearchCV,
     RandomizedSearchCV,
+    StratifiedKFold,
     cross_val_score,
     train_test_split,
-    StratifiedKFold,
 )
+from sklearn.preprocessing import StandardScaler
 from sklearn.svm import SVC
 from tensorflow.keras import layers, models
 from tensorflow.keras.wrappers.scikit_learn import KerasClassifier
+
+from plots import *
 
 
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
@@ -51,18 +49,18 @@ warnings.filterwarnings("ignore")
 
 
 # ------------- DATA WRANGLING -------------
-def data_wrangling(df):
+def data_wrangling(data):
     if normalise:
         print("[*]\tNormalise Data")
         # Bring all data values to the same range
-        df = normalise_tabular_data(df)
+        data = normalise_tabular_data(data)
     if remove_correlate_features:
         print("[*]\tRemove correlating features")
         # Remove heavily correlating features from data-set (provide redundant information)
-        df = remove_correlating_features(df)
+        data = remove_correlating_features(data)
 
     # Remove correlating features above specified threshold
-    return df
+    return data
 
 
 def dimensionality_reduction(X):
@@ -119,14 +117,23 @@ def normalise_tabular_data(data):
     return data
 
 
-def remove_correlating_features(df):
+def remove_correlating_features(data: pd.DataFrame) -> pd.DataFrame:
+    """Removes features correlating with other features
+    yielding correlation values above a user-specified threshold
+
+    Args:
+        data (pd.DataFrame): data
+
+    Returns:
+        pd.DataFrame: feature selected data
+    """
     # Temporarily store names/labels to append back later
-    names = df["name"]
-    labels = df["status"]
+    names = data["name"]
+    labels = data["status"]
     # Filter dataframe to only include numerical features
-    df = df.select_dtypes(include="number").drop("status", axis=1)
+    data = data.select_dtypes(include="number").drop("status", axis=1)
     # Calculate correlation amongst features in data
-    matrix = df.corr().abs()
+    matrix = data.corr().abs()
     # Create mask that eliminates mirrored values
     mask = np.triu(np.ones_like(matrix, dtype=bool))
     # Apply mask to matrix, only leaving valuable info
@@ -135,16 +142,15 @@ def remove_correlating_features(df):
     to_drop = [
         c for c in reduced_matrix.columns if any(reduced_matrix[c] > corr_threshold)
     ]
-    # Uncomment to view dropped columns
-    # print(*to_drop, sep="\n")
 
-    # Drop columns
-    df = df.drop(to_drop, axis=1)
+    # Drop all columns with correlation above threshold value
+    data = data.drop(to_drop, axis=1)
+
     # Append original columns that couldn't/shouldn't be processed in this function
-    df["name"] = names
-    df["status"] = labels
+    data["name"] = names
+    data["status"] = labels
 
-    return df
+    return data
 
 
 # -------- EXPERIMENTAL DIMENSIONALITY REDUCTION
@@ -193,7 +199,8 @@ def predict_minus_feature(df, removed_col=""):
                 pred = svm(x_train, x_test, y_train, y_test)
                 data.append(pred)
             column_names.insert(0, "alldata")
-            columns.append(pd.DataFrame({"removed": column_names, "prediction": data}))
+            columns.append(pd.DataFrame(
+                {"removed": column_names, "prediction": data}))
         predictions = pd.concat(columns)
         predictions.to_csv("predictions.csv", index=False)
         column, acc = get_max_prediction_average(predictions)
@@ -271,7 +278,8 @@ def split_data_train_test(X, y, test_size):
             X, y, test_size=test_size, stratify=y, random_state=42
         )
     else:
-        x_train, x_test, y_train, y_test = train_test_split(X, y, test_size=test_size)
+        x_train, x_test, y_train, y_test = train_test_split(
+            X, y, test_size=test_size)
 
     return x_train, x_test, y_train, y_test
 
@@ -321,9 +329,7 @@ def find_best_nn_settings(x_train, y_train):
         file_name (str): File name to save parameters as
     """
 
-    file_name = f"best_dl_imbalanced_{title_template}.csv"
-    if balance_labels:
-        file_name = f"best_dl_balanced_{title_template}.csv"
+    file_name = f"best_dl_settings_{title_template}.csv"
 
     if not exists(f"settings/{file_name}"):
         print("[*]\tAttempting to find optimal parameters for Neural Network...")
@@ -352,18 +358,21 @@ def find_best_nn_settings(x_train, y_train):
             CV_dl = GridSearchCV(
                 estimator=model, param_grid=param_grid, n_jobs=-1, cv=5
             )
-            results = CV_dl.fit(x_train, y_train, validation_data=(x_val, y_val))
+            results = CV_dl.fit(
+                x_train, y_train, validation_data=(x_val, y_val))
         else:
             print("[*]\tTuning Model using Random Search Cross Validation")
             CV_dl = RandomizedSearchCV(
                 estimator=model, param_distributions=param_grid, n_jobs=-1, cv=5
             )
-            results = CV_dl.fit(x_train, y_train, validation_data=(x_val, y_val))
+            results = CV_dl.fit(
+                x_train, y_train, validation_data=(x_val, y_val))
 
         print(results.best_score_, results.best_params_)
         end = time.perf_counter()
         print(f"{end-start:.2f} seconds")
-        sdf = pd.DataFrame.from_dict(results.best_params_, orient="index").transpose()
+        sdf = pd.DataFrame.from_dict(
+            results.best_params_, orient="index").transpose()
         sdf.to_csv(f"settings/{file_name}", index=False)
 
 
@@ -419,7 +428,8 @@ def find_best_rf_settings(x_train, y_train):
     CV_rfc.fit(x_train, y_train)
     end = time.perf_counter()
     print(f"{end-start:.2f} seconds")
-    save_best_params(CV_rfc.best_params_, f"best_rf_settings_{title_template}.csv")
+    save_best_params(CV_rfc.best_params_,
+                     f"best_rf_settings_{title_template}.csv")
 
 
 def find_best_lr_settings(x_train, y_train):
@@ -450,7 +460,8 @@ def find_best_svm_settings(x_train, y_train):
 
     # fitting the model for grid search
     grid.fit(x_train, y_train)
-    save_best_params(grid.best_params_, f"best_svm_settings_{title_template}.csv")
+    save_best_params(grid.best_params_,
+                     f"best_svm_settings_{title_template}.csv")
 
 
 # ------------- CLASSIFICATION METHODS -------------
@@ -497,11 +508,13 @@ def extra_trees(x_train, x_test, y_train, y_test):
         y_test (pd.Series): Labels for test data
     """
     TOP_FEATURES = x_train.shape[1]
-    forest = ExtraTreesClassifier(n_estimators=250, max_depth=5, random_state=42)
+    forest = ExtraTreesClassifier(
+        n_estimators=250, max_depth=5, random_state=42)
     forest.fit(x_train, y_train)
 
     importances = forest.feature_importances_
-    std = np.std([tree.feature_importances_ for tree in forest.estimators_], axis=0)
+    std = np.std(
+        [tree.feature_importances_ for tree in forest.estimators_], axis=0)
 
     indices = np.argsort(importances)[::-1]
     indices = indices[:TOP_FEATURES]
@@ -572,7 +585,8 @@ def logistic_regression(x_train, x_test, y_train, y_test):
     # print("Label counts")
     # print(y_train_new.value_counts())
     params = {"C": 0.001, "penalty": "l2"}
-    X_train_std_new, y_train_new = balance_training_data(X_train_std_new, y_train_new)
+    X_train_std_new, y_train_new = balance_training_data(
+        X_train_std_new, y_train_new)
     classifier1 = LogisticRegression(random_state=42, n_jobs=-1, **params).fit(
         X_train_std_new, y_train_new
     )
@@ -604,7 +618,8 @@ def cross_validation(model, n, X, y):
     # Initialise a cross validation model for cross_val_score to use
     cv = StratifiedKFold(n_splits=n, shuffle=True)
     # Execute cross validation
-    k_scores = cross_val_score(model, X, y, scoring="accuracy", cv=cv, n_jobs=-1)
+    k_scores = cross_val_score(
+        model, X, y, scoring="accuracy", cv=cv, n_jobs=-1)
 
     return k_scores
 
@@ -655,11 +670,10 @@ def random_forest(x_train, x_test, y_train, y_test):
             count = count + 1
     acc = f"{count / float(len(pred))*100:.2f}"
     print(f"[*]\t{acc}%\t\tRandom Forest")
+    file_name = f"rf_cm_{title_template}"
     plot_title = f"[Imbalanced] Random Forest Confusion Matrix : ({acc}%)"
-    file_name = f"rf_imbalanced_cm"
     if balance_labels:
         plot_title = f"[Balanced] Random Forest Confusion Matrix : ({acc}%)"
-        file_name = f"rf_balanced_cm"
     plot_cm(actual, pred, plot_title, file_name)
     return actual, pred
 
@@ -703,11 +717,10 @@ def svm(x_train, x_test, y_train, y_test):
     acc = f"{count / float(len(pred))*100:.2f}"
     print(f"[*]\t{acc}%\t\tSupport Vector Machine")
 
+    file_name = f"svm_cm_{title_template}"
     plot_title = f"[Imbalanced] SVM Confusion Matrix : ({acc}%)"
-    file_name = f"svm_imbalanced_cm_{title_template}"
     if balance_labels:
         plot_title = f"[Balanced] SVM Confusion Matrix : ({acc}%)"
-        file_name = f"svm_balanced_cm_{title_template}"
 
     plot_cm(actual, pred, plot_title, file_name)
     return actual, pred
@@ -746,21 +759,14 @@ def train_neural_network(x_train, x_test, y_train, y_test):
     """
     # Load in epochs from environment variable file
     find_best_nn_settings(x_train, y_train)
-
-    file_name = f"best_dl_imbalanced_{title_template}.csv"
-    plot_title_affix = "imbalanced_dl"
-    model_title_affix = "imbalanced"
-    if balance_labels:
-        file_name = f"best_dl_balanced_{title_template}.csv"
-        plot_title_affix = "balanced_dl"
-        model_title_affix = "balanced"
+    settings_title_affix = "balanced" if balance_labels else "imbalanced"
+    file_name = f"best_dl_settings_{title_template}.csv"
 
     # Read best neural network settings as dictionary
     parms = pd.read_csv(f"settings/{file_name}").to_dict("index")[0]
 
     # Load best settings
     batch_size = parms["batch_size"]
-    dropout_rate = parms["dropout_rate"]
     epochs = parms["epochs"]
     layer1 = parms["layer1"]
     layer2 = parms["layer2"]
@@ -769,11 +775,10 @@ def train_neural_network(x_train, x_test, y_train, y_test):
     loss = parms["loss"]
     metric = parms["metric"]
     output = parms["output"]
-    input_shape = x_test.shape[1]
 
     # If a model hasn't been trained before...
     if not exists(
-        f"models/parkinsons_model_{epochs}_{model_title_affix}_{title_template}.tf"
+        f"models/parkinsons_model_{epochs}_{title_template}.tf"
     ):
         dprint("[*]\tTraining Neural Network")
         # Prepare network
@@ -791,12 +796,12 @@ def train_neural_network(x_train, x_test, y_train, y_test):
             epochs=epochs,
             batch_size=batch_size,
             validation_data=(x_val, y_val),
-            verbose=0,
+            verbose=0
         )
 
         # Save parkinsons model
         model.save(
-            f"models/parkinsons_model_{epochs}_{model_title_affix}_{title_template}.tf"
+            f"models/parkinsons_model_{epochs}_{title_template}.tf"
         )
 
         # Get accuracy / loss data
@@ -814,29 +819,31 @@ def train_neural_network(x_train, x_test, y_train, y_test):
             )
             df = pd.DataFrame({"acc": acc, "val_acc": val_acc})
             df.to_csv(
-                f"plots/neural network/nn_acc_loss/{model_title_affix}_accuracy.csv",
+                f"plots/neural_network/nn_acc_loss/{settings_title_affix}_accuracy.csv",
                 index=False,
             )
             df = pd.DataFrame(
                 {"acc": smooth_curve(acc), "val_acc": smooth_curve(val_acc)}
             )
             df.to_csv(
-                f"plots/neural network/nn_acc_loss/{model_title_affix}_accuracy_smooth.csv",
+                f"plots/neural_network/nn_acc_loss/{settings_title_affix}_accuracy_smooth.csv",
                 index=False,
             )
             plot_loss(
-                smooth_curve(loss), smooth_curve(val_loss), f"parkinsons_loss_{epochs}"
+                smooth_curve(loss), smooth_curve(
+                    val_loss), f"parkinsons_loss_{epochs}"
             )
             df = pd.DataFrame({"loss": loss, "val_loss": val_loss})
             df.to_csv(
-                f"plots/neural network/nn_acc_loss/{model_title_affix}_loss.csv",
+                f"plots/neural network/nn_acc_loss/{settings_title_affix}_loss.csv",
                 index=False,
             )
             df = pd.DataFrame(
-                {"loss": smooth_curve(loss), "val_loss": smooth_curve(val_loss)}
+                {"loss": smooth_curve(
+                    loss), "val_loss": smooth_curve(val_loss)}
             )
             df.to_csv(
-                f"plots/neural network/nn_acc_loss/{model_title_affix}_loss_smooth.csv",
+                f"plots/neural network/nn_acc_loss/{settings_title_affix}_loss_smooth.csv",
                 index=False,
             )
     else:
@@ -845,20 +852,15 @@ def train_neural_network(x_train, x_test, y_train, y_test):
 
 def test_neural_network(x_test, y_test):
     """Tests a trained neural network"""
-    file_name = f"best_dl_imbalanced_{title_template}.csv"
-    model_title_affix = "imbalanced"
-    if balance_labels:
-        file_name = f"best_dl_balanced_{title_template}.csv"
-        model_title_affix = "balanced"
+    file_name = f"best_dl_settings_{title_template}.csv"
     # Read epochs from best neural network settings file
     parms = pd.read_csv(f"settings/{file_name}").to_dict("index")[0]
     epochs = parms["epochs"]
-    input_shape = x_test.shape[1]
 
     # Loads model
     # TODO: Somehow state whether model takes data with reduced dimensions (PCA, LDA)
     model = models.load_model(
-        f"models/parkinsons_model_{epochs}_{model_title_affix}_{title_template}.tf"
+        f"models/parkinsons_model_{epochs}_{title_template}.tf"
     )
 
     # predictions = model.evaluate(x_test, y_test, verbose=0)
@@ -879,10 +881,9 @@ def test_neural_network(x_test, y_test):
     print(f"[*]\t{acc}%\t\tNeural Network")
 
     plot_title = f"[Imbalanced] Neural Network Confusion Matrix : ({acc}%)"
-    file_name = f"nn_imbalanced_cm"
+    file_name = f"nn_cm_{title_template}"
     if balance_labels:
         plot_title = f"[Balanced] Neural Network Confusion Matrix : ({acc}%)"
-        file_name = f"nn_balanced_cm"
 
     # Plot confusion matrix of results
     plot_cm(actual, pred, plot_title, file_name)
@@ -984,7 +985,8 @@ def initialise_settings():
     plots = strtobool(os.getenv("PLOTS"))
 
     normalise = strtobool(os.getenv("NORMALISE"))
-    remove_correlate_features = strtobool(os.getenv("REMOVE_CORRELATED_FEATURES"))
+    remove_correlate_features = strtobool(
+        os.getenv("REMOVE_CORRELATED_FEATURES"))
     corr_threshold = float(os.getenv("CORRELATION_DROP_THRESHOLD"))
     balance_labels = strtobool(os.getenv("BALANCE_TRAINING_LABELS"))
     stratify = strtobool(os.getenv("STRATIFY"))
@@ -1006,13 +1008,13 @@ def initialise_settings():
     cv = strtobool(os.getenv("CROSS_VALIDATION"))
 
     global title_template
-    title_template = "norm_rcf_bl"
+    title_template = "balanced_norm_rcf"
     if not normalise:
         title_template = title_template.replace("norm_", "")
     if not remove_correlate_features:
-        title_template = title_template.replace("rcf_", "")
+        title_template = title_template.replace("rcf", "")
     if not balance_labels:
-        title_template = title_template.replace("bl", "")
+        title_template = title_template.replace("balanced", "imbalanced")
 
 
 # ------------- MAIN METHODS -------------
@@ -1076,7 +1078,6 @@ def main():
                 numeric_dataframe.iloc[:4, :4],
                 file_name="partial_correlation_matrix.png",
             )
-
     print_title("Pre-processing")
     # Transform data based on information discovered through eda
     df = data_wrangling(df)
@@ -1123,6 +1124,7 @@ def main():
     x_train.columns, indices, importances, std = extra_trees(
         x_train, x_test, y_train, y_test
     )
+
     plot_feature_importance(
         x_train.columns,
         indices,
@@ -1138,7 +1140,7 @@ def main():
     print("\tAccuracy\tClassification Model\t")
     print("------------------------------------------------")
     a1, p1 = svm(x_train, x_test, y_train, y_test)
-    # accuracy_table(a1, p1, n_test, "incorrect")
+    # accuracy_`table(a1, p1, n_test, "incorrect")
 
     a2, p2 = random_forest(x_train, x_test, y_train, y_test)
     # accuracy_table(a2, p2, n_test, "incorrect")
@@ -1149,7 +1151,8 @@ def main():
 
     if plots:
         print_title("Post Classification Plots")
-        model_results = {"Random Forest": (a1, p1), "SVM": (a2, p2), "NN": (a3, p3)}
+        model_results = {"SVM": (
+            a1, p1), "Random Forest": (a2, p2), "NN": (a3, p3)}
 
         # TODO: Scatter plots to compare predicted with actual labels
         # for actual, pred in zip(actuals, predictions):
@@ -1157,6 +1160,10 @@ def main():
             print(f"[*]\tPlotting labels for {model}")
             actual = results[0]
             pred = results[1]
+            from sklearn.metrics import log_loss, roc_auc_score
+            print(f"Log loss: {log_loss(actual, pred):.2f}")
+            print(f"ROC AUC: {roc_auc_score(actual, pred):.2f}")
+
             data = x_test.copy()
             data = data[["PPE", "MDVP:APQ"]]
             data["actual"] = actual
