@@ -46,9 +46,8 @@ def plot_loss(loss, val_loss, file_name, title="Training/Validation Loss"):
         width=1920,
         height=1080,
         xaxis=dict(title="Epochs", linecolor="lightgrey", showgrid=False),
-        yaxis=dict(
-            range=(0, 100), title="Loss", linecolor="lightgrey", showgrid=False
-        ),
+        yaxis=dict(title="Loss", linecolor="lightgrey", showgrid=False
+                   ),
         title=dict(text=title, x=0.5),
         paper_bgcolor="rgba(255,255,255,255)",
         plot_bgcolor="rgba(255,255,255,255)",
@@ -101,9 +100,8 @@ def plot_accuracy(acc, val_acc, file_name, title="Training/Validation Accuracy")
         width=1920,
         height=1080,
         xaxis=dict(title="Epochs", linecolor="lightgrey", showgrid=False),
-        yaxis=dict(
-            range=(0, 100), title="Accuracy (%)", linecolor="lightgrey", showgrid=False
-        ),
+        yaxis=dict(title="Accuracy (%)", linecolor="lightgrey", showgrid=False
+                   ),
         title=dict(text=title, x=0.5),
         paper_bgcolor="rgba(255,255,255,255)",
         plot_bgcolor="rgba(255,255,255,255)",

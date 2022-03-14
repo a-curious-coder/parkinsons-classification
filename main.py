@@ -754,7 +754,7 @@ def train_neural_network(x_train, x_test, y_train, y_test):
     if not exists(
         f"models/parkinsons_model_{epochs}_{title_template}.tf"
     ):
-        dprint("[*]\tTraining Neural Network")
+        print("[*]\tTraining Neural Network")
         # Prepare network
         model = create_model(
             layer1, layer2, output, x_train.shape[1], optimizer, loss, metric, init
@@ -789,27 +789,27 @@ def train_neural_network(x_train, x_test, y_train, y_test):
             plot_accuracy(
                 smooth_curve(acc),
                 smooth_curve(val_acc),
-                f"parkinsons_accuracy_{epochs}",
+                f"accuracy_smooth_{title_template}",
             )
             df = pd.DataFrame({"acc": acc, "val_acc": val_acc})
             df.to_csv(
-                f"plots/neural_network/nn_acc_loss/{settings_title_affix}_accuracy.csv",
+                f"plots/neural_network/nn_acc_loss/accuracy_{title_template}.csv",
                 index=False,
             )
             df = pd.DataFrame(
                 {"acc": smooth_curve(acc), "val_acc": smooth_curve(val_acc)}
             )
             df.to_csv(
-                f"plots/neural_network/nn_acc_loss/{settings_title_affix}_accuracy_smooth.csv",
+                f"plots/neural_network/nn_acc_loss/accuracy_smooth_{title_template}.csv",
                 index=False,
             )
             plot_loss(
                 smooth_curve(loss), smooth_curve(
-                    val_loss), f"parkinsons_loss_{epochs}"
+                    val_loss), f"loss_smooth_{title_template}"
             )
             df = pd.DataFrame({"loss": loss, "val_loss": val_loss})
             df.to_csv(
-                f"plots/neural_network/nn_acc_loss/{settings_title_affix}_loss.csv",
+                f"plots/neural_network/nn_acc_loss/loss_{title_template}.csv",
                 index=False,
             )
             df = pd.DataFrame(
@@ -817,7 +817,7 @@ def train_neural_network(x_train, x_test, y_train, y_test):
                     loss), "val_loss": smooth_curve(val_loss)}
             )
             df.to_csv(
-                f"plots/neural_network/nn_acc_loss/{settings_title_affix}_loss_smooth.csv",
+                f"plots/neural_network/nn_acc_loss/loss_smooth_{title_template}.csv",
                 index=False,
             )
     else:
@@ -1070,14 +1070,12 @@ def main():
     n_test = x_test["name"].tolist()
     x_test.drop("name", axis=1, inplace=True)
 
-    
     if balance_labels:
         print_title(f"Classification Model [Balanced Training Labels]")
         x_train, y_train = balance_training_data(x_train, y_train)
     else:
         print_title(f"Classification Model [Imbalanced Training Labels]")
     print("------------------------------------------------")
-    
 
     # Identify outliers
     isolation_forest(x_train, x_test, y_train, y_test)
