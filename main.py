@@ -1,26 +1,16 @@
 #!/usr/bin/env python
-import csv
-import os
-import time
-import warnings
-from distutils.util import strtobool
-from os.path import exists
-
-import numpy as np
-import pandas as pd
-import tensorflow as tf
-from dotenv import load_dotenv
-from imblearn.over_sampling import SMOTE
-from plotly import graph_objects as go
-from plotly.figure_factory import create_distplot
-from sklearn import linear_model
-from sklearn.decomposition import PCA, TruncatedSVD
-from sklearn.ensemble import (
-    ExtraTreesClassifier,
-    IsolationForest,
-    RandomForestClassifier,
+from plots import *
+from tensorflow.keras.wrappers.scikit_learn import KerasClassifier
+from tensorflow.keras import layers, models
+from sklearn.svm import SVC
+from sklearn.preprocessing import StandardScaler
+from sklearn.model_selection import (
+    GridSearchCV,
+    RandomizedSearchCV,
+    StratifiedKFold,
+    cross_val_score,
+    train_test_split,
 )
-from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import (
     accuracy_score,
     f1_score,
@@ -29,24 +19,30 @@ from sklearn.metrics import (
     roc_auc_score,
     log_loss
 )
-from sklearn.model_selection import (
-    GridSearchCV,
-    RandomizedSearchCV,
-    StratifiedKFold,
-    cross_val_score,
-    train_test_split,
+from sklearn.linear_model import LogisticRegression
+from sklearn.ensemble import (
+    ExtraTreesClassifier,
+    IsolationForest,
+    RandomForestClassifier,
 )
-from sklearn.preprocessing import StandardScaler
-from sklearn.svm import SVC
-from tensorflow.keras import layers, models
-from tensorflow.keras.wrappers.scikit_learn import KerasClassifier
-
-from plots import *
-
-
+from sklearn.decomposition import PCA, TruncatedSVD
+from sklearn import linear_model
+from plotly.figure_factory import create_distplot
+from plotly import graph_objects as go
+from imblearn.over_sampling import SMOTE
+from dotenv import load_dotenv
+import tensorflow as tf
+import pandas as pd
+import numpy as np
+from os.path import exists
+from distutils.util import strtobool
+import time
+import csv
+import os
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
+
+
 pd.set_option("display.float_format", lambda x: "%.3f" % x)
-warnings.filterwarnings("ignore")
 
 
 # ------------- DATA WRANGLING -------------
@@ -285,7 +281,7 @@ def split_data_train_test(X, y, test_size):
     return x_train, x_test, y_train, y_test
 
 
-def balance_training_data(x_train, y_train):
+def balance_training_data(x_train: pd.DataFrame, y_train: pd.Series) -> pd.DataFrame:
     """Generates new datapoints to ensure an even split in train class labels
 
     Args:
@@ -293,19 +289,13 @@ def balance_training_data(x_train, y_train):
         y_train (pd.DataFrame): training labels
 
     Returns:
-        pd.DataFrame: new train data
+        pd.DataFrame, pd.Series: new training data and labels
     """
+    # Initialise SMOTE object
     smote = SMOTE(sampling_strategy="minority", n_jobs=-1)
+    # Generate new training data to equalise training labels
     X_sm, y_sm = smote.fit_resample(x_train, y_train)
 
-    # Plot new ratio in pie chart
-    # plot_label_distribution(
-    #     y_sm,
-    #     "class_ratio_training_smote",
-    #     "Balanced Training Data with smote",
-    # )
-
-    # Return fabricated balanced data
     return X_sm, y_sm
 
 
@@ -475,6 +465,7 @@ def isolation_forest(x_train, x_test, y_train, y_test):
         y_train (pd.DataFrame): train labels
         y_test (pd.DataFrame): test labels
     """
+    # Rescales values to be between -1 and 1
     scaler = StandardScaler()
     x_train = scaler.fit_transform(x_train)
     x_test = scaler.fit_transform(x_test)
@@ -492,10 +483,20 @@ def isolation_forest(x_train, x_test, y_train, y_test):
 
     y_pred = isf.fit_predict(x_train)
 
-    X_train_iforest, y_train_iforest = (
-        x_train[(y_pred != -1), :],
-        y_train[(y_pred != -1)],
-    )
+    # Evaluate normal values
+    normal_values = [num for num in y_pred if num >= 1]
+
+    outliers = len(y_pred) - len(normal_values)
+
+    print(f"[*]\tOutliers: {outliers}")
+
+    # Remove outliers
+    # X_train_iforest, y_train_iforest = (
+    #     x_train[(y_pred != -1), :],
+    #     y_train[(y_pred != -1)],
+    # )
+
+    # return normalise_tabular_data(X_train_iforest), y_train_iforest
 
 
 def extra_trees(x_train, x_test, y_train, y_test):
@@ -682,17 +683,15 @@ def create_model_svm(x_train, y_train):
     return svm
 
 
-def svm(x_train, x_test, y_train, y_test):
-    """Support Vector Machine Neural Network
-
+def svm(x_train: pd.DataFrame, x_test: pd.DataFrame, y_train: pd.Series, y_test: pd.Series) -> list:
+    """Support Vector Machine Training and Testing
     Args:
-        x_train ([type]): [description]
-        x_test ([type]): [description]
-        y_train ([type]): [description]
-        y_test ([type]): [description]
-
+        x_train (pd.DataFrame): train data
+        x_test (pd.Series): test data
+        y_train (pd.DataFrame): training labels
+        y_test (pd.Series): test labels
     Returns:
-        [type]: [description]
+        list: predicted and actual labels
     """
     svm = create_model_svm(x_train, y_train)
     svm.fit(x_train, y_train)
@@ -973,6 +972,11 @@ def initialise_settings():
         title_template = title_template.replace("rcf", "")
     if not balance_labels:
         title_template = title_template.replace("balanced", "imbalanced")
+
+
+def test_all_configurations(df):
+    # TODO: Test all configurations function to produce table with as many columns as there are pre-processing methods (bool values)
+    pass
 
 
 # ------------- MAIN METHODS -------------
