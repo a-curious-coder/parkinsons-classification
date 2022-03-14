@@ -27,6 +27,7 @@ from sklearn.metrics import (
     precision_score,
     recall_score,
     roc_auc_score,
+    log_loss
 )
 from sklearn.model_selection import (
     GridSearchCV,
@@ -645,37 +646,24 @@ def create_model_rf(x_train, y_train):
     return rf
 
 
-def random_forest(x_train, x_test, y_train, y_test):
-    """Random Forest Classification
+def random_forest(x_train: pd.DataFrame, x_test: pd.DataFrame, y_train: pd.Series, y_test: pd.Series) -> pd.Series:
+    """Random Forest training and classification
 
     Args:
-        x_train ([type]): [description]
-        x_test ([type]): [description]
-        y_train ([type]): [description]
-        y_test ([type]): [description]
-
+        x_train (pd.DataFrame): training set
+        x_test (pd.DataFrame): test set
+        y_train (pd.Series): training labels
+        y_test (pd.Series): test labels
     Returns:
-        [type]: [description]
+        pd.Series: predicted and actual labels
     """
     rf = create_model_rf(x_train, y_train)
     # Train model
     rf.fit(x_train, y_train)
-    # Predict and
+    # Predict labels
     pred = rf.predict(x_test)
-    actual = y_test.values
-    features = x_test.columns
-    count = 0
-    for i in range(len(pred)):
-        if pred[i] == actual[i]:
-            count = count + 1
-    acc = f"{count / float(len(pred))*100:.2f}"
-    print(f"[*]\t{acc}%\t\tRandom Forest")
-    file_name = f"rf_cm_{title_template}"
-    plot_title = f"[Imbalanced] Random Forest Confusion Matrix : ({acc}%)"
-    if balance_labels:
-        plot_title = f"[Balanced] Random Forest Confusion Matrix : ({acc}%)"
-    plot_cm(actual, pred, plot_title, file_name)
-    return actual, pred
+
+    return y_test.values, pred
 
 
 def create_model_svm(x_train, y_train):
@@ -709,21 +697,7 @@ def svm(x_train, x_test, y_train, y_test):
     svm = create_model_svm(x_train, y_train)
     svm.fit(x_train, y_train)
     pred = svm.predict(x_test)
-    actual = y_test.values
-    count = 0
-    for i in range(len(pred)):
-        if pred[i] == actual[i]:
-            count = count + 1
-    acc = f"{count / float(len(pred))*100:.2f}"
-    print(f"[*]\t{acc}%\t\tSupport Vector Machine")
-
-    file_name = f"svm_cm_{title_template}"
-    plot_title = f"[Imbalanced] SVM Confusion Matrix : ({acc}%)"
-    if balance_labels:
-        plot_title = f"[Balanced] SVM Confusion Matrix : ({acc}%)"
-
-    plot_cm(actual, pred, plot_title, file_name)
-    return actual, pred
+    return y_test.values, pred
 
 
 def create_model(
@@ -835,7 +809,7 @@ def train_neural_network(x_train, x_test, y_train, y_test):
             )
             df = pd.DataFrame({"loss": loss, "val_loss": val_loss})
             df.to_csv(
-                f"plots/neural network/nn_acc_loss/{settings_title_affix}_loss.csv",
+                f"plots/neural_network/nn_acc_loss/{settings_title_affix}_loss.csv",
                 index=False,
             )
             df = pd.DataFrame(
@@ -843,7 +817,7 @@ def train_neural_network(x_train, x_test, y_train, y_test):
                     loss), "val_loss": smooth_curve(val_loss)}
             )
             df.to_csv(
-                f"plots/neural network/nn_acc_loss/{settings_title_affix}_loss_smooth.csv",
+                f"plots/neural_network/nn_acc_loss/{settings_title_affix}_loss_smooth.csv",
                 index=False,
             )
     else:
@@ -871,23 +845,7 @@ def test_neural_network(x_test, y_test):
 
     pred = [round(pred) for pred in new]
 
-    actual = y_test.values
-    count = 0
-    for i in range(len(pred)):
-        if pred[i] == actual[i]:
-            count = count + 1
-
-    acc = f"{count / float(len(pred))*100:.2f}"
-    print(f"[*]\t{acc}%\t\tNeural Network")
-
-    plot_title = f"[Imbalanced] Neural Network Confusion Matrix : ({acc}%)"
-    file_name = f"nn_cm_{title_template}"
-    if balance_labels:
-        plot_title = f"[Balanced] Neural Network Confusion Matrix : ({acc}%)"
-
-    # Plot confusion matrix of results
-    plot_cm(actual, pred, plot_title, file_name)
-    return actual, pred
+    return y_test.values, pred
 
 
 # ------------- MISC METHODS -------------
@@ -1112,10 +1070,14 @@ def main():
     n_test = x_test["name"].tolist()
     x_test.drop("name", axis=1, inplace=True)
 
-    title = f"Classification Model [Imbalanced Training Labels]"
+    
     if balance_labels:
-        title = f"Classification Model [Balanced Training Labels]"
+        print_title(f"Classification Model [Balanced Training Labels]")
         x_train, y_train = balance_training_data(x_train, y_train)
+    else:
+        print_title(f"Classification Model [Imbalanced Training Labels]")
+    print("------------------------------------------------")
+    
 
     # Identify outliers
     isolation_forest(x_train, x_test, y_train, y_test)
@@ -1136,9 +1098,6 @@ def main():
     # # logistic_regression(x_train, x_test, y_train, y_test)
     linear_regression(x_train, x_test, y_train, y_test)
 
-    print_title(title)
-    print("\tAccuracy\tClassification Model\t")
-    print("------------------------------------------------")
     a1, p1 = svm(x_train, x_test, y_train, y_test)
     # accuracy_`table(a1, p1, n_test, "incorrect")
 
@@ -1150,25 +1109,25 @@ def main():
     # accuracy_table(a3, p3, n_test, "incorrect")
 
     if plots:
-        print_title("Post Classification Plots")
-        model_results = {"SVM": (
-            a1, p1), "Random Forest": (a2, p2), "NN": (a3, p3)}
-
+        print_title("Post Classification Results")
+        model_results = {"SVM": [(a1, p1), "svm"], "Random Forest": [
+            (a2, p2), "rf"], "NN": [(a3, p3), "nn"]}
+        print("Accuracy\tLog Loss\tROC AUC\tModel")
         # TODO: Scatter plots to compare predicted with actual labels
         # for actual, pred in zip(actuals, predictions):
         for model, results in model_results.items():
-            print(f"[*]\tPlotting labels for {model}")
-            actual = results[0]
-            pred = results[1]
-            from sklearn.metrics import log_loss, roc_auc_score
-            print(f"Log loss: {log_loss(actual, pred):.2f}")
-            print(f"ROC AUC: {roc_auc_score(actual, pred):.2f}")
+            actual = results[0][0]
+            pred = results[0][1]
+            model_abbrev = results[1][0]
+            acc = f"{accuracy_score(actual, pred)*100:.2f}"
+            file_name = f"{model_abbrev}_cm_{title_template}"
+            plot_title = f"[Imbalanced] {model} Confusion Matrix : ({acc}%)"
+            if balance_labels:
+                plot_title = f"[Balanced] {model} Confusion Matrix : ({acc}%)"
 
-            data = x_test.copy()
-            data = data[["PPE", "MDVP:APQ"]]
-            data["actual"] = actual
-            data["pred"] = pred
-            plot_actual_vs_pred(data)
+            plot_cm(actual, pred, plot_title, file_name)
+            print(
+                f"{acc}%\t\t{log_loss(actual, pred):.2f}\t\t{roc_auc_score(actual, pred):.2f}\t{model}")
 
     if cv:
         del X["name"]

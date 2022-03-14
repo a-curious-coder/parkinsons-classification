@@ -244,7 +244,7 @@ def plot_pairplot(data, file_name="pairplot.png", title="Pairplot", kind="scatte
         sns_plot = sns.pairplot(
             data,
             hue="status",
-            kind="reg",
+            kind=kind,
             plot_kws={"line_kws": {"color": "red"},
                       "scatter_kws": {"alpha": 0.4}},
         )
@@ -517,6 +517,13 @@ def f(x):
 def plot_actual_vs_pred(
     data, file_name="label_classification.png", title="Label classifications"
 ):
+    """Plots actual vs predicted data
+
+    Args:
+        data (_type_): _description_
+        file_name (str, optional): _description_. Defaults to "label_classification.png".
+        title (str, optional): _description_. Defaults to "Label classifications".
+    """
 
     # Boolean column dictating if predicted is correct
     data["correct"] = data.apply(f, axis=1)
